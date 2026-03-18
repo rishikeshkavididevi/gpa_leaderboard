@@ -3,6 +3,7 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import re
 import time
+import base64
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 4 
@@ -13,11 +14,20 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GOOGLE SHEETS CONNECTION ---
+# --- 2. GOOGLE SHEETS CONNECTION (WITH BASE64 FIX) ---
+if "connections" in st.secrets and "gsheets" in st.secrets.connections:
+    encoded_key = st.secrets.connections.gsheets.get("private_key_base64")
+    if encoded_key:
+        decoded_key = base64.b64decode(encoded_key).decode("utf-8")
+        st.secrets.connections.gsheets["private_key"] = decoded_key
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_leaderboard():
-    return conn.read(ttl=0)
+    try:
+        return conn.read(ttl=0)
+    except:
+        return pd.DataFrame(columns=["email", "display_name", "gpa"])
 
 def save_to_leaderboard(email, name, gpa):
     df = get_leaderboard()
@@ -36,14 +46,9 @@ def remove_from_leaderboard(email):
         return True
     return False
 
-# --- 3. UTILS ---
-def validate_name(email):
-    match = re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", email.lower().strip())
-    return f"{match.group(1).capitalize()} {match.group(2).capitalize()}" if match else None
-
+# --- 3. APP UI ---
 st.set_page_config(page_title="Glenn HS Leaderboard", layout="wide")
 
-# State Init
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1 = 4
 if 'num_s2' not in st.session_state: st.session_state.num_s2 = 4
@@ -51,15 +56,13 @@ if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 if 'calculated_gpa' not in st.session_state: st.session_state.calculated_gpa = None
 if 'has_joined' not in st.session_state: st.session_state.has_joined = False
 
-# Sidebar logic: Update 'has_joined' state based on Sheet
+# Sidebar Check
 if 'user_email' in st.session_state:
-    current_df = get_leaderboard()
-    if not current_df.empty:
-        st.session_state.has_joined = st.session_state.user_email in current_df['email'].values
+    lb = get_leaderboard()
+    st.session_state.has_joined = not lb.empty and st.session_state.user_email in lb['email'].values
 
 nav = ["Join"]
-if st.session_state.has_joined:
-    nav.append("Leaderboard")
+if st.session_state.has_joined: nav.append("Leaderboard")
 page = st.sidebar.radio("Navigate", nav)
 
 def on_class_change(sem, i):
@@ -76,9 +79,10 @@ if page == "Join":
         st.title("🏆 Verify Identity")
         e_in = st.text_input("School Email")
         if st.button("Verify"):
-            name = validate_name(e_in)
-            if name: 
-                st.session_state.user_email, st.session_state.real_name, st.session_state.step = e_in, name, 2
+            match = re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", e_in.lower().strip())
+            if match:
+                st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
+                st.session_state.user_email, st.session_state.step = e_in, 2
                 st.rerun()
             else: st.error("Invalid @k12.leanderisd.org email.")
 
@@ -86,7 +90,7 @@ if page == "Join":
         st.header(f"Welcome, {st.session_state.real_name}")
         t1, t2 = st.columns(2)
         with t1: show_real = st.toggle("Show real name on leaderboard", value=True)
-        with t2: sync_ui = st.toggle("Sync Semester 2 to Semester 1", value=st.session_state.sync_toggle)
+        with t2: sync_ui = st.toggle("Sync S2 to S1", value=st.session_state.sync_toggle)
 
         if sync_ui != st.session_state.sync_toggle:
             st.session_state.sync_toggle = sync_ui
@@ -95,7 +99,6 @@ if page == "Join":
                 for i in range(st.session_state.num_s1): st.session_state[f"S2c{i}"] = st.session_state.get(f"S1c{i}", "")
             st.rerun()
 
-        st.markdown("---")
         col_l, col_r = st.columns(2)
         
         def grade_row(sem, i, start_c):
@@ -104,7 +107,7 @@ if page == "Join":
             with c_sel:
                 cls = st.selectbox(f"{sem} Class {i+1}", [""] + ALL_CLASSES, index=ALL_CLASSES.index(curr)+1 if curr in ALL_CLASSES else 0, key=f"{sem}c{i}_sync_{st.session_state.sync_toggle}", on_change=on_class_change, args=(sem, i))
                 st.session_state[f"{sem}c{i}"] = cls
-
+            
             def cycle_cell(c_num, col_obj, label):
                 with col_obj:
                     st.write(f"**{label}**")
@@ -119,69 +122,51 @@ if page == "Join":
 
         with col_l:
             st.subheader("Semester 1")
-            ca, cr = st.columns(2)
-            if ca.button("➕ Add Class (S1)", disabled=st.session_state.num_s1 >= 8):
+            if st.button("➕ Add Class (S1)", disabled=st.session_state.num_s1 >= 8):
                 st.session_state.num_s1 += 1
-                if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
-                st.rerun()
-            if cr.button("➖ Remove Class (S1)", disabled=st.session_state.num_s1 <= 1):
-                st.session_state.num_s1 -= 1
                 if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
                 st.rerun()
             s1_data = [grade_row("S1", i, 1) for i in range(st.session_state.num_s1)]
 
         with col_r:
             st.subheader("Semester 2")
-            ca2, cr2 = st.columns(2)
-            if ca2.button("➕ Add Class (S2)", disabled=st.session_state.num_s2 >= 8 or st.session_state.sync_toggle):
+            if st.button("➕ Add Class (S2)", disabled=st.session_state.num_s2 >= 8 or st.session_state.sync_toggle):
                 st.session_state.num_s2 += 1
-                st.rerun()
-            if cr2.button("➖ Remove Class (S2)", disabled=st.session_state.num_s2 <= 1 or st.session_state.sync_toggle):
-                st.session_state.num_s2 -= 1
                 st.rerun()
             s2_data = [grade_row("S2", i, 4) for i in range(st.session_state.num_s2)]
 
-        st.markdown("---")
         if st.button("Calculate GPA", type="primary"):
-            def process(data, sem):
+            def process(data):
                 res = []
-                for idx, (cls, g1, g2, g3) in enumerate(data):
-                    if not cls: return None, f"Missing class: {sem} row {idx+1}"
-                    if "" in [g1, g2, g3]: return None, f"Missing grade: {cls}"
+                for (cls, g1, g2, g3) in data:
+                    if not cls or "" in [g1, g2, g3]: return None
                     vals = [v for v in [g1, g2, g3] if isinstance(v, int)]
                     if vals:
                         avg = sum(vals)/len(vals)
                         scale = 6.0 if cls in LEVEL_3 else (5.5 if cls in LEVEL_2 else 5.0)
-                        gpa = 0.0 if avg < 70 else max(0.0, round(scale - ((100-avg)*0.1), 2))
-                        res.append(gpa)
-                return res, None
+                        res.append(0.0 if avg < 70 else max(0.0, round(scale - ((100-avg)*0.1), 2)))
+                return res
 
-            s1_v, e1 = process(s1_data, "S1")
-            if e1: st.error(e1)
+            s1_v, s2_v = process(s1_data), process(s2_data)
+            if s1_v is None or s2_v is None: st.error("Fill all classes and grades.")
             else:
-                s2_v, e2 = process(s2_data, "S2")
-                if e2: st.error(e2)
-                else:
-                    a1, a2 = sum(s1_v)/len(s1_v) if s1_v else 0, sum(s2_v)/len(s2_v) if s2_v else 0
-                    st.session_state.calculated_gpa = round((a1 + a2) / 2, 4)
+                a1, a2 = sum(s1_v)/len(s1_v) if s1_v else 0, sum(s2_v)/len(s2_v) if s2_v else 0
+                st.session_state.calculated_gpa = round((a1 + a2) / 2, 4)
 
         if st.session_state.calculated_gpa is not None:
             st.info(f"### Final GPA: **{st.session_state.calculated_gpa}**")
-            b_col1, b_col2 = st.columns([1, 1.2])
-            with b_col1:
-                if st.button("🚀 Join/Update Leaderboard"):
-                    display_name = st.session_state.real_name if show_real else "Anonymous Grizzly"
-                    save_to_leaderboard(st.session_state.user_email, display_name, st.session_state.calculated_gpa)
-                    st.success("Leaderboard Updated!")
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("🚀 Join Leaderboard"):
+                    name = st.session_state.real_name if show_real else "Anonymous Grizzly"
+                    save_to_leaderboard(st.session_state.user_email, name, st.session_state.calculated_gpa)
                     st.session_state.has_joined = True
-                    time.sleep(1); st.rerun()
-            with b_col2:
+                    st.rerun()
+            with b2:
                 if st.button("🗑️ Leave Leaderboard", type="secondary"):
                     if remove_from_leaderboard(st.session_state.user_email):
-                        st.warning("You have left the leaderboard.")
                         st.session_state.has_joined = False
-                        time.sleep(1); st.rerun()
-                    else: st.error("You aren't on the leaderboard yet!")
+                        st.rerun()
 
 elif page == "Leaderboard":
     st.title("🏆 Glenn HS Leaderboard")
