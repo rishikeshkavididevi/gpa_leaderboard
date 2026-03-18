@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import re
+import time
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 4 
@@ -16,19 +17,24 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_leaderboard():
-    # Read the current sheet. ttl=0 means no caching (see changes instantly)
     return conn.read(ttl=0)
 
 def save_to_leaderboard(email, name, gpa):
     df = get_leaderboard()
     new_entry = pd.DataFrame([{"email": email, "display_name": name, "gpa": gpa}])
-    # Update or Add
     if not df.empty and email in df['email'].values:
         df.loc[df['email'] == email, ['display_name', 'gpa']] = [name, gpa]
     else:
         df = pd.concat([df, new_entry], ignore_index=True)
-    # Write back to Google Sheets
     conn.update(data=df)
+
+def remove_from_leaderboard(email):
+    df = get_leaderboard()
+    if not df.empty and email in df['email'].values:
+        df = df[df['email'] != email]
+        conn.update(data=df)
+        return True
+    return False
 
 # --- 3. UTILS ---
 def validate_name(email):
@@ -45,6 +51,17 @@ if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 if 'calculated_gpa' not in st.session_state: st.session_state.calculated_gpa = None
 if 'has_joined' not in st.session_state: st.session_state.has_joined = False
 
+# Sidebar logic: Update 'has_joined' state based on Sheet
+if 'user_email' in st.session_state:
+    current_df = get_leaderboard()
+    if not current_df.empty:
+        st.session_state.has_joined = st.session_state.user_email in current_df['email'].values
+
+nav = ["Join"]
+if st.session_state.has_joined:
+    nav.append("Leaderboard")
+page = st.sidebar.radio("Navigate", nav)
+
 def on_class_change(sem, i):
     key = f"{sem}c{i}_sync_{st.session_state.sync_toggle}"
     val = st.session_state[key]
@@ -53,9 +70,6 @@ def on_class_change(sem, i):
         if sem == "S2":
             if val != st.session_state.get(f"S1c{i}", ""): st.session_state.sync_toggle = False
         elif sem == "S1": st.session_state[f"S2c{i}"] = val
-
-nav = ["Join", "Leaderboard"] # Always visible now
-page = st.sidebar.radio("Navigate", nav)
 
 if page == "Join":
     if st.session_state.step == 1:
@@ -105,19 +119,29 @@ if page == "Join":
 
         with col_l:
             st.subheader("Semester 1")
-            if st.button("➕ Add Class (S1)", disabled=st.session_state.num_s1 >= 8):
+            ca, cr = st.columns(2)
+            if ca.button("➕ Add Class (S1)", disabled=st.session_state.num_s1 >= 8):
                 st.session_state.num_s1 += 1
+                if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
+                st.rerun()
+            if cr.button("➖ Remove Class (S1)", disabled=st.session_state.num_s1 <= 1):
+                st.session_state.num_s1 -= 1
                 if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
                 st.rerun()
             s1_data = [grade_row("S1", i, 1) for i in range(st.session_state.num_s1)]
 
         with col_r:
             st.subheader("Semester 2")
-            if st.button("➕ Add Class (S2)", disabled=st.session_state.num_s2 >= 8 or st.session_state.sync_toggle):
+            ca2, cr2 = st.columns(2)
+            if ca2.button("➕ Add Class (S2)", disabled=st.session_state.num_s2 >= 8 or st.session_state.sync_toggle):
                 st.session_state.num_s2 += 1
+                st.rerun()
+            if cr2.button("➖ Remove Class (S2)", disabled=st.session_state.num_s2 <= 1 or st.session_state.sync_toggle):
+                st.session_state.num_s2 -= 1
                 st.rerun()
             s2_data = [grade_row("S2", i, 4) for i in range(st.session_state.num_s2)]
 
+        st.markdown("---")
         if st.button("Calculate GPA", type="primary"):
             def process(data, sem):
                 res = []
@@ -143,17 +167,26 @@ if page == "Join":
 
         if st.session_state.calculated_gpa is not None:
             st.info(f"### Final GPA: **{st.session_state.calculated_gpa}**")
-            if st.button("🚀 Join Leaderboard"):
-                display_name = st.session_state.real_name if show_real else "Anonymous Grizzly"
-                save_to_leaderboard(st.session_state.user_email, display_name, st.session_state.calculated_gpa)
-                st.success("Successfully joined!")
-                time.sleep(1); st.rerun()
+            b_col1, b_col2 = st.columns([1, 1.2])
+            with b_col1:
+                if st.button("🚀 Join/Update Leaderboard"):
+                    display_name = st.session_state.real_name if show_real else "Anonymous Grizzly"
+                    save_to_leaderboard(st.session_state.user_email, display_name, st.session_state.calculated_gpa)
+                    st.success("Leaderboard Updated!")
+                    st.session_state.has_joined = True
+                    time.sleep(1); st.rerun()
+            with b_col2:
+                if st.button("🗑️ Leave Leaderboard", type="secondary"):
+                    if remove_from_leaderboard(st.session_state.user_email):
+                        st.warning("You have left the leaderboard.")
+                        st.session_state.has_joined = False
+                        time.sleep(1); st.rerun()
+                    else: st.error("You aren't on the leaderboard yet!")
 
 elif page == "Leaderboard":
     st.title("🏆 Glenn HS Leaderboard")
     df = get_leaderboard()
     if not df.empty:
-        # Sort by GPA descending
         df = df.sort_values(by="gpa", ascending=False).reset_index(drop=True)
         df.index = range(1, len(df) + 1)
         st.table(df[['display_name', 'gpa']])
