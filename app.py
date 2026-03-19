@@ -4,7 +4,7 @@ import re
 
 # --- 0. ADMIN CONTROL ---
 # Host: Change this number (1-6) to control which cycles are open
-CURRENT_CYCLE = 4 
+CURRENT_CYCLE = 5 
 
 # --- 1. DATA SETUP (Transcribed from Image) ---
 LEVEL_3 = [
