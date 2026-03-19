@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import re
-import time
-import base64
-import json
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 4 
@@ -15,42 +12,45 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GOOGLE SHEETS CONNECTION (SIMPLIFIED FIX) ---
-# We manually decode the key into a persistent session variable if it's not already handled
-if "connections" in st.secrets and "gsheets" in st.secrets.connections:
-    if "private_key_base64" in st.secrets.connections.gsheets and "private_key" not in st.secrets.connections.gsheets:
-        try:
-            decoded_key = base64.b64decode(st.secrets.connections.gsheets["private_key_base64"]).decode("utf-8")
-            # We use a trick to pass the decoded key without editing the read-only secrets
-            st.session_state["decoded_key"] = decoded_key
-        except:
-            pass
-
-# Initialize connection - Streamlit will look at secrets[connections.gsheets] automatically
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- 2. GOOGLE SHEETS CONNECTION (FIXED) ---
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error(f"Failed to connect to Google Sheets: {str(e)}")
+    st.error("Please check your secrets.toml configuration.")
+    st.stop()
 
 def get_leaderboard():
     try:
         return conn.read(worksheet="Sheet1", ttl=0)
-    except:
+    except Exception as e:
+        st.warning(f"Could not load leaderboard: {str(e)}")
         return pd.DataFrame(columns=["email", "display_name", "gpa"])
 
 def save_to_leaderboard(email, name, gpa):
-    df = get_leaderboard()
-    new_entry = pd.DataFrame([{"email": email, "display_name": name, "gpa": gpa}])
-    if not df.empty and email in df['email'].values:
-        df.loc[df['email'] == email, ['display_name', 'gpa']] = [name, gpa]
-    else:
-        df = pd.concat([df, new_entry], ignore_index=True)
-    conn.update(worksheet="Sheet1", data=df)
+    try:
+        df = get_leaderboard()
+        new_entry = pd.DataFrame([{"email": email, "display_name": name, "gpa": gpa}])
+        if not df.empty and email in df['email'].values:
+            df.loc[df['email'] == email, ['display_name', 'gpa']] = [name, gpa]
+        else:
+            df = pd.concat([df, new_entry], ignore_index=True)
+        conn.update(worksheet="Sheet1", data=df)
+        st.success("Successfully saved to leaderboard!")
+    except Exception as e:
+        st.error(f"Failed to save to leaderboard: {str(e)}")
 
 def remove_from_leaderboard(email):
-    df = get_leaderboard()
-    if not df.empty and email in df['email'].values:
-        df = df[df['email'] != email]
-        conn.update(worksheet="Sheet1", data=df)
-        return True
-    return False
+    try:
+        df = get_leaderboard()
+        if not df.empty and email in df['email'].values:
+            df = df[df['email'] != email]
+            conn.update(worksheet="Sheet1", data=df)
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Failed to remove from leaderboard: {str(e)}")
+        return False
 
 # --- 3. APP UI ---
 st.set_page_config(page_title="Glenn HS Leaderboard", layout="wide")
