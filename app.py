@@ -3,7 +3,7 @@ import pandas as pd
 import re
 
 # --- 0. ADMIN CONTROL ---
-CURRENT_CYCLE = 5 
+CURRENT_CYCLE = 4 
 
 # --- 1. DATA SETUP ---
 LEVEL_3 = ["English III AP", "English III IB", "English IV AP", "English IV IB", "Calculus AB AP", "Calculus BC AP", "Math: Analysis & Appr IB SL", "Math: Analysis & Appr IB HL", "Math: Application & Int IB SL", "Math: Application & Int IB HL", "Precalculus AP", "Statistics AP", "Biology AP", "Biology IB SL", "Biology IB HL", "Chemistry AP", "Chemistry IB SL", "Chemistry IB HL", "Environmental Science AP", "Physics 1 AP", "Physics 2 AP", "Physics C: Mechanics AP", "Physics IB SL", "Physics IB HL", "European History AP", "History of the Americas IB", "Human Geography AP", "Macroeconomics AP", "Microeconomics AP", "Psychology AP", "Psychology IB", "U.S. Government AP", "U.S. History AP", "World History AP", "Chinese IV AP", "French IV AP", "French IB SL", "French IB HL", "Latin IV AP", "Latin IB SL", "Latin IB HL", "Spanish IV AP", "Spanish V AP", "Spanish IB SL", "Spanish IB HL"]
@@ -14,14 +14,14 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 # --- 2. GPA MATH ---
 def get_detailed_gpa(data):
     results = []
-    for row in data:
-        cls, g1, g2, g3 = row
+    for entry in data:
+        cls, grades = entry[0], entry[1]
         if not cls: continue
         
         valid_grades = []
-        for g in [g1, g2, g3]:
+        for g in grades:
             try: valid_grades.append(float(g))
-            except: continue
+            except: continue # Skips "Locked" or "N/A" strings
         
         if not valid_grades: continue
 
@@ -33,17 +33,12 @@ def get_detailed_gpa(data):
 
 # --- 3. SMART SYNC CALLBACK ---
 def on_class_change(sem, i):
-    # Retrieve the new value from the widget
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
-    
-    # If syncing is ON
     if st.session_state.sync_toggle:
         if sem == "S1":
-            # Force S2 to match S1
             st.session_state[f"S2c{i}_val"] = new_val
         elif sem == "S2":
-            # Kill sync if S2 is manually changed to something else
             if new_val != st.session_state.get(f"S1c{i}_val", ""):
                 st.session_state.sync_toggle = False
 
@@ -68,7 +63,6 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.header(f"Welcome, {st.session_state.real_name}")
     
-    # Toggle logic
     sync_ui = st.toggle("Sync Semester 2 to Semester 1", value=st.session_state.sync_toggle)
     if sync_ui != st.session_state.sync_toggle:
         st.session_state.sync_toggle = sync_ui
@@ -78,10 +72,9 @@ elif st.session_state.step == 2:
                 st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
         st.rerun()
 
-    def grade_row(sem, i):
+    def grade_row(sem, i, cycles):
         cols = st.columns([2.5, 1, 1, 1])
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
-        
         with cols[0]:
             cls = st.selectbox(f"{sem} Class {i+1}", [""] + ALL_CLASSES, 
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
@@ -89,7 +82,7 @@ elif st.session_state.step == 2:
                              on_change=on_class_change, args=(sem, i))
         
         grades = []
-        for j, cyc in enumerate([1, 2, 3] if sem == "S1" else [4, 5, 6]):
+        for j, cyc in enumerate(cycles):
             with cols[j+1]:
                 if cyc > CURRENT_CYCLE:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}")
@@ -102,52 +95,64 @@ elif st.session_state.step == 2:
                     else:
                         val = st.text_input(f"C{cyc}", value="", key=f"{sem}g{cyc}_{i}")
                         grades.append(val)
-        return cls, grades[0], grades[1], grades[2]
+        return cls, grades
 
     col_l, col_r = st.columns(2)
     with col_l:
         st.subheader("Semester 1")
-        if st.button("➕ Add S1"): 
+        b1, b2 = st.columns(2)
+        if b1.button("➕ Add Class (S1)"): 
             st.session_state.num_s1 += 1
             if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
-        s1_data = [grade_row("S1", i) for i in range(st.session_state.num_s1)]
+        if b2.button("➖ Remove Class (S1)") and st.session_state.num_s1 > 1:
+            st.session_state.num_s1 -= 1
+            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
+            st.rerun()
+        s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
 
     with col_r:
         st.subheader("Semester 2")
-        if st.button("➕ Add S2"): 
+        b3, b4 = st.columns(2)
+        if b3.button("➕ Add Class (S2)"): 
             st.session_state.num_s2 += 1
             if st.session_state.sync_toggle and st.session_state.num_s2 != st.session_state.num_s1: st.session_state.sync_toggle = False
             st.rerun()
-        s2_data = [grade_row("S2", i) for i in range(st.session_state.num_s2)]
+        if b4.button("➖ Remove Class (S2)") and st.session_state.num_s2 > 1:
+            st.session_state.num_s2 -= 1
+            if st.session_state.sync_toggle and st.session_state.num_s2 != st.session_state.num_s1: st.session_state.sync_toggle = False
+            st.rerun()
+        s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
 
+    st.markdown("---")
     if st.button("📊 Calculate Final Breakdown", use_container_width=True):
         errors = []
-        s1_valid = [r for r in s1_data if r[0] != ""]
-        s2_valid = [r for r in s2_data if r[0] != ""]
+        s1_active = [r for r in s1_data if r[0] != ""]
+        s2_active = [r for r in s2_data if r[0] != ""]
 
-        if not s1_valid: errors.append("Select at least one class for Semester 1.")
-        if not s2_valid: errors.append("Select at least one class for Semester 2.")
+        if not s1_active: errors.append("Select at least one class for Semester 1.")
+        if not s2_active: errors.append("Select at least one class for Semester 2.")
         
-        for sem, data in [("S1", s1_valid), ("S2", s2_valid)]:
-            for cls, g1, g2, g3 in data:
-                if any(g == "" for g in [g1, g2, g3]):
-                    errors.append(f"Fill all grades for {cls} in {sem} or check N/A.")
+        for sem, active_rows in [("S1", s1_active), ("S2", s2_active)]:
+            for cls, grades in active_rows:
+                if any(g == "" for g in grades):
+                    errors.append(f"Missing grade in {sem} for '{cls}'.")
 
         if errors:
             for err in set(errors): st.error(err)
         else:
-            s1_res = get_detailed_gpa(s1_valid)
-            s2_res = get_detailed_gpa(s2_valid)
+            s1_res = get_detailed_gpa(s1_active)
+            s2_res = get_detailed_gpa(s2_active)
             s1_avg = sum([x['GPA'] for x in s1_res]) / len(s1_res)
             s2_avg = sum([x['GPA'] for x in s2_res]) / len(s2_res)
             
             st.balloons()
+            st.subheader("📝 Detailed GPA Breakdown")
             t1, t2 = st.columns(2)
             with t1:
                 st.table(pd.DataFrame(s1_res))
-                st.info(f"S1 Avg: {round(s1_avg, 4)}")
+                st.info(f"**S1 Average: {round(s1_avg, 4)}**")
             with t2:
                 st.table(pd.DataFrame(s2_res))
-                st.info(f"S2 Avg: {round(s2_avg, 4)}")
+                st.info(f"**S2 Average: {round(s2_avg, 4)}**")
             st.success(f"### Final Combined GPA: {round((s1_avg + s2_avg) / 2, 4)}")
