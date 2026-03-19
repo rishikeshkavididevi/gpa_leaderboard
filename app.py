@@ -26,16 +26,13 @@ def calculate_gpa(s1_data, s2_data):
 
 # --- 3. SMART SYNC CALLBACK ---
 def on_class_change(sem, i):
-    # This captures the manual change in the UI
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
     
     if st.session_state.sync_toggle:
         if sem == "S1":
-            # Push to S2 physically
             st.session_state[f"S2c{i}_val"] = new_val
         elif sem == "S2":
-            # If S2 becomes different from S1, KILL TOGGLE
             if new_val != st.session_state.get(f"S1c{i}_val", ""):
                 st.session_state.sync_toggle = False
 
@@ -73,9 +70,7 @@ elif st.session_state.step == 2:
     def grade_row(sem, i, start_c):
         c_sel, c_1, c_2, c_3 = st.columns([2.5, 1, 1, 1])
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
-        
         with c_sel:
-            # The secret: Adding the toggle state to the KEY forces a physical UI refresh
             st.selectbox(
                 f"{sem} Class {i+1}", 
                 [""] + ALL_CLASSES, 
@@ -106,10 +101,18 @@ elif st.session_state.step == 2:
     with col_r:
         st.subheader("Semester 2")
         b3, b4 = st.columns(2)
-        if b3.button("➕ S2", disabled=st.session_state.sync_toggle): 
-            st.session_state.num_s2 += 1; st.rerun()
-        if b4.button("➖ S2", disabled=st.session_state.sync_toggle) and st.session_state.num_s2 > 1:
-            st.session_state.num_s2 -= 1; st.rerun()
+        if b3.button("➕ S2"): 
+            st.session_state.num_s2 += 1
+            # AUTO-KILL if count no longer matches S1
+            if st.session_state.sync_toggle and st.session_state.num_s2 != st.session_state.num_s1:
+                st.session_state.sync_toggle = False
+            st.rerun()
+        if b4.button("➖ S2") and st.session_state.num_s2 > 1:
+            st.session_state.num_s2 -= 1
+            # AUTO-KILL if count no longer matches S1
+            if st.session_state.sync_toggle and st.session_state.num_s2 != st.session_state.num_s1:
+                st.session_state.sync_toggle = False
+            st.rerun()
         s2_data = [grade_row("S2", i, 4) for i in range(st.session_state.num_s2)]
 
     if st.button("📊 Calculate Final GPA", use_container_width=True):
