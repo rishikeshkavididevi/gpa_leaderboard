@@ -4,7 +4,6 @@ from streamlit_gsheets import GSheetsConnection
 import re
 import time
 import base64
-import json
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 4 
@@ -16,20 +15,22 @@ LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", 
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
 # --- 2. GOOGLE SHEETS CONNECTION ---
-# Decode the base64 key from secrets if present
 if "connections" in st.secrets and "gsheets" in st.secrets.connections:
-    encoded_key = st.secrets.connections.gsheets.get("private_key_base64")
-    if encoded_key:
-        decoded_key = base64.b64decode(encoded_key).decode("utf-8")
+    s_sec = st.secrets.connections.gsheets
+    # Decode the Base64 key to fix newline issues
+    if "private_key_base64" in s_sec:
+        decoded_key = base64.b64decode(s_sec["private_key_base64"]).decode("utf-8")
         st.secrets.connections.gsheets["private_key"] = decoded_key
+    # Force service account mode
+    st.secrets.connections.gsheets["type"] = "service_account"
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_leaderboard():
     try:
-        # Targeting Sheet1 specifically
+        # Use worksheet="Sheet1" to match your Google Sheet tab name
         return conn.read(worksheet="Sheet1", ttl=0)
-    except Exception:
+    except:
         return pd.DataFrame(columns=["email", "display_name", "gpa"])
 
 def save_to_leaderboard(email, name, gpa):
@@ -39,7 +40,7 @@ def save_to_leaderboard(email, name, gpa):
         df.loc[df['email'] == email, ['display_name', 'gpa']] = [name, gpa]
     else:
         df = pd.concat([df, new_entry], ignore_index=True)
-    # Target Sheet1 for updates
+    # Target Sheet1 specifically for the write operation
     conn.update(worksheet="Sheet1", data=df)
 
 def remove_from_leaderboard(email):
@@ -58,15 +59,16 @@ if 'num_s1' not in st.session_state: st.session_state.num_s1 = 4
 if 'num_s2' not in st.session_state: st.session_state.num_s2 = 4
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 if 'calculated_gpa' not in st.session_state: st.session_state.calculated_gpa = None
-if 'has_joined' not in st.session_state: st.session_state.has_joined = False
 
-# Sidebar Check
+# Check current join status
 if 'user_email' in st.session_state:
     lb = get_leaderboard()
-    st.session_state.has_joined = not lb.empty and st.session_state.user_email in lb['email'].values
+    has_joined = not lb.empty and st.session_state.user_email in lb['email'].values
+else:
+    has_joined = False
 
 nav = ["Join"]
-if st.session_state.has_joined: nav.append("Leaderboard")
+if has_joined: nav.append("Leaderboard")
 page = st.sidebar.radio("Navigate", nav)
 
 def on_class_change(sem, i):
@@ -164,12 +166,10 @@ if page == "Join":
                 if st.button("🚀 Join Leaderboard"):
                     name = st.session_state.real_name if show_real else "Anonymous Grizzly"
                     save_to_leaderboard(st.session_state.user_email, name, st.session_state.calculated_gpa)
-                    st.session_state.has_joined = True
                     st.rerun()
             with b2:
                 if st.button("🗑️ Leave Leaderboard", type="secondary"):
                     if remove_from_leaderboard(st.session_state.user_email):
-                        st.session_state.has_joined = False
                         st.rerun()
 
 elif page == "Leaderboard":
