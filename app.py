@@ -15,25 +15,22 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 def get_detailed_gpa(data):
     results = []
     for row in data:
-        cls, g1, g2, g3 = row
+        cls, g_list = row[0], row[1]
         if not cls: continue
         
         valid_grades = []
-        for g in [g1, g2, g3]:
-            try: valid_grades.append(float(g))
-            except: continue
+        for g in g_list:
+            if g not in ["Locked", "N/A"]:
+                valid_grades.append(float(g))
         
-        if not valid_grades: 
+        if not valid_grades:
             results.append({"Class": cls, "GPA": 0.0})
             continue
 
         avg = sum(valid_grades) / len(valid_grades)
-        max_gpa = 6.0 if cls in LEVEL_3 else 5.5 if cls in LEVEL_2 else 5.0
-        
-        # Deduction Logic: Max GPA - ((100 - avg) * 0.1)
-        class_gpa = max(0, max_gpa - ((100 - avg) * 0.1)) if avg >= 70 else 0.0
+        max_val = 6.0 if cls in LEVEL_3 else 5.5 if cls in LEVEL_2 else 5.0
+        class_gpa = max(0, max_val - ((100 - avg) * 0.1)) if avg >= 70 else 0.0
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
-    
     return results
 
 # --- 3. UI CALLBACKS ---
@@ -54,7 +51,7 @@ if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.n
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
 if st.session_state.step == 1:
-    st.title("🏆 GPA Calculator") # Updated as requested
+    st.title("🏆 GPA Calculator")
     e_in = st.text_input("School Email")
     if st.button("Start"):
         if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", e_in.lower().strip()):
@@ -86,38 +83,52 @@ elif st.session_state.step == 2:
                         st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}")
                         row_grades.append("N/A")
                     else:
-                        val = st.text_input(f"C{cyc}", "0", key=f"{sem}g{cyc}_{i}")
+                        val = st.text_input(f"C{cyc}", value="", key=f"{sem}g{cyc}_{i}") # Empty default
                         row_grades.append(val)
-        return cls, row_grades[0], row_grades[1], row_grades[2]
+        return cls, row_grades
 
     col_l, col_r = st.columns(2)
     with col_l:
         st.subheader("Semester 1")
         if st.button("➕ S1"): st.session_state.num_s1 += 1; st.rerun()
-        s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
+        s1_data = [grade_row("S1", i, [1,2,3]) for i in range(st.session_state.num_s1)]
     with col_r:
         st.subheader("Semester 2")
         if st.button("➕ S2"): st.session_state.num_s2 += 1; st.rerun()
-        s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
+        s2_data = [grade_row("S2", i, [4,5,6]) for i in range(st.session_state.num_s2)]
 
+    st.markdown("---")
     if st.button("📊 Calculate Final Breakdown", use_container_width=True):
-        s1_breakdown = get_detailed_gpa(s1_data)
-        s2_breakdown = get_detailed_gpa(s2_data)
+        # Validation Logic
+        errors = []
+        s1_active = [r for r in s1_data if r[0] != ""]
+        s2_active = [r for r in s2_data if r[0] != ""]
         
-        s1_avg = sum([x['GPA'] for x in s1_breakdown]) / len(s1_breakdown) if s1_breakdown else 0
-        s2_avg = sum([x['GPA'] for x in s2_breakdown]) / len(s2_breakdown) if s2_breakdown else 0
+        if not s1_active: errors.append("Please select at least one class for Semester 1.")
+        if not s2_active: errors.append("Please select at least one class for Semester 2.")
         
-        st.balloons()
-        st.subheader("📝 Detailed GPA Breakdown")
+        for sem_name, active_rows in [("S1", s1_active), ("S2", s2_active)]:
+            for cls, grades in active_rows:
+                if any(g == "" for g in grades):
+                    errors.append(f"Missing grade in {sem_name} for '{cls}'. Please fill all boxes or select N/A.")
         
-        tab1, tab2 = st.columns(2)
-        with tab1:
-            st.markdown("**Semester 1**")
-            st.table(pd.DataFrame(s1_breakdown))
-            st.info(f"**S1 Semester Average: {round(s1_avg, 4)}**")
-        with tab2:
-            st.markdown("**Semester 2**")
-            st.table(pd.DataFrame(s2_breakdown))
-            st.info(f"**S2 Semester Average: {round(s2_avg, 4)}**")
+        if errors:
+            for err in set(errors): st.error(err)
+        else:
+            s1_breakdown = get_detailed_gpa(s1_active)
+            s2_breakdown = get_detailed_gpa(s2_active)
+            s1_avg = sum([x['GPA'] for x in s1_breakdown]) / len(s1_breakdown)
+            s2_avg = sum([x['GPA'] for x in s2_breakdown]) / len(s2_breakdown)
             
-        st.success(f"### Final Combined GPA: {round((s1_avg + s2_avg) / 2, 4)}")
+            st.balloons()
+            st.subheader("📝 Detailed GPA Breakdown")
+            tab1, tab2 = st.columns(2)
+            with tab1:
+                st.markdown("**Semester 1**")
+                st.table(pd.DataFrame(s1_breakdown))
+                st.info(f"**S1 Average: {round(s1_avg, 4)}**")
+            with tab2:
+                st.markdown("**Semester 2**")
+                st.table(pd.DataFrame(s2_breakdown))
+                st.info(f"**S2 Average: {round(s2_avg, 4)}**")
+            st.success(f"### Final Combined GPA: {round((s1_avg + s2_avg) / 2, 4)}")
