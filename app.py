@@ -18,7 +18,6 @@ def get_detailed_gpa(data):
         cls, g1, g2, g3 = row
         if not cls: continue
         
-        # Handle cycle inputs (numbers or N/A)
         valid_grades = []
         for g in [g1, g2, g3]:
             try: valid_grades.append(float(g))
@@ -31,7 +30,7 @@ def get_detailed_gpa(data):
         avg = sum(valid_grades) / len(valid_grades)
         max_gpa = 6.0 if cls in LEVEL_3 else 5.5 if cls in LEVEL_2 else 5.0
         
-        # Deduction Logic
+        # Deduction Logic: Max GPA - ((100 - avg) * 0.1)
         class_gpa = max(0, max_gpa - ((100 - avg) * 0.1)) if avg >= 70 else 0.0
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
     
@@ -48,14 +47,14 @@ def handle_change(sem, i):
             st.session_state.sync_toggle = False
 
 # --- 4. APP UI ---
-st.set_page_config(page_title="Glenn HS GPA", layout="wide")
+st.set_page_config(page_title="GPA Calculator", layout="wide")
 
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
 if st.session_state.step == 1:
-    st.title("🏆 LISD 6.0 GPA Calculator")
+    st.title("🏆 GPA Calculator") # Updated as requested
     e_in = st.text_input("School Email")
     if st.button("Start"):
         if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", e_in.lower().strip()):
