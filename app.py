@@ -15,24 +15,19 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GOOGLE SHEETS CONNECTION (FIXED) ---
-# We create a local dictionary for credentials instead of trying to edit st.secrets
-creds_dict = {}
+# --- 2. GOOGLE SHEETS CONNECTION (SIMPLIFIED FIX) ---
+# We manually decode the key into a persistent session variable if it's not already handled
 if "connections" in st.secrets and "gsheets" in st.secrets.connections:
-    s_sec = st.secrets.connections.gsheets
-    # Copy all existing secrets to our local dict
-    for key, value in s_sec.items():
-        creds_dict[key] = value
-    
-    # Handle Base64 decoding locally
-    if "private_key_base64" in s_sec:
-        decoded_key = base64.b64decode(s_sec["private_key_base64"]).decode("utf-8")
-        creds_dict["private_key"] = decoded_key
-    
-    creds_dict["type"] = "service_account"
+    if "private_key_base64" in st.secrets.connections.gsheets and "private_key" not in st.secrets.connections.gsheets:
+        try:
+            decoded_key = base64.b64decode(st.secrets.connections.gsheets["private_key_base64"]).decode("utf-8")
+            # We use a trick to pass the decoded key without editing the read-only secrets
+            st.session_state["decoded_key"] = decoded_key
+        except:
+            pass
 
-# Initialize connection using the local dict
-conn = st.connection("gsheets", type=GSheetsConnection, **creds_dict)
+# Initialize connection - Streamlit will look at secrets[connections.gsheets] automatically
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_leaderboard():
     try:
@@ -134,16 +129,25 @@ if page == "Join":
 
         with col_l:
             st.subheader("Semester 1")
-            if st.button("➕ Add Class (S1)", disabled=st.session_state.num_s1 >= 8):
+            ca, cr = st.columns(2)
+            if ca.button("➕ Add Class (S1)", disabled=st.session_state.num_s1 >= 8):
                 st.session_state.num_s1 += 1
+                if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
+                st.rerun()
+            if cr.button("➖ Remove Class (S1)", disabled=st.session_state.num_s1 <= 1):
+                st.session_state.num_s1 -= 1
                 if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
                 st.rerun()
             s1_data = [grade_row("S1", i, 1) for i in range(st.session_state.num_s1)]
 
         with col_r:
             st.subheader("Semester 2")
-            if st.button("➕ Add Class (S2)", disabled=st.session_state.num_s2 >= 8 or st.session_state.sync_toggle):
+            ca2, cr2 = st.columns(2)
+            if ca2.button("➕ Add Class (S2)", disabled=st.session_state.num_s2 >= 8 or st.session_state.sync_toggle):
                 st.session_state.num_s2 += 1
+                st.rerun()
+            if cr2.button("➖ Remove Class (S2)", disabled=st.session_state.num_s2 <= 1 or st.session_state.sync_toggle):
+                st.session_state.num_s2 -= 1
                 st.rerun()
             s2_data = [grade_row("S2", i, 4) for i in range(st.session_state.num_s2)]
 
