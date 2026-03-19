@@ -19,7 +19,6 @@ def calculate_gpa(s1_data, s2_data):
         cls, g1, g2, g3 = row
         if not cls: continue
         
-        # Collect valid numeric grades
         grades = []
         for g in [g1, g2, g3]:
             try: grades.append(float(g))
@@ -28,10 +27,8 @@ def calculate_gpa(s1_data, s2_data):
         if not grades: continue
         avg = sum(grades) / len(grades)
         
-        # Base Points (Adjust this to your school's specific 4.0/5.0/6.0 scale)
+        # Simple 4.0 base + weight (adjust as needed for Leander ISD 5.0/6.0)
         base = (avg - 60) / 10 if avg >= 70 else 0 
-        
-        # Add Weight
         if cls in LEVEL_3: base += 1.0
         elif cls in LEVEL_2: base += 0.5
         
@@ -71,6 +68,10 @@ elif st.session_state.step == 2:
     sync_ui = st.toggle("Sync Semester 2 Classes to Semester 1", value=st.session_state.sync_toggle)
     if sync_ui != st.session_state.sync_toggle:
         st.session_state.sync_toggle = sync_ui
+        if sync_ui:
+            st.session_state.num_s2 = st.session_state.num_s1
+            for i in range(st.session_state.num_s1):
+                st.session_state[f"S2c{i}"] = st.session_state.get(f"S1c{i}", "")
         st.rerun()
 
     def grade_row(sem, i, start_c):
@@ -87,16 +88,32 @@ elif st.session_state.step == 2:
         return cls, g1, g2, g3
 
     col_l, col_r = st.columns(2)
+    
     with col_l:
         st.subheader("Semester 1")
-        if st.button("➕ Add Class (S1)"): st.session_state.num_s1 += 1; st.rerun()
+        ca1, cr1 = st.columns(2)
+        if ca1.button("➕ Add Class (S1)", key="add_s1"): 
+            st.session_state.num_s1 += 1
+            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
+            st.rerun()
+        if cr1.button("➖ Remove Class (S1)", key="rem_s1") and st.session_state.num_s1 > 1:
+            st.session_state.num_s1 -= 1
+            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
+            st.rerun()
         s1_data = [grade_row("S1", i, 1) for i in range(st.session_state.num_s1)]
 
     with col_r:
         st.subheader("Semester 2")
-        if not st.session_state.sync_toggle:
-            if st.button("➕ Add Class (S2)"): st.session_state.num_s2 += 1; st.rerun()
-        else: st.session_state.num_s2 = st.session_state.num_s1
+        ca2, cr2 = st.columns(2)
+        # S2 Add/Remove buttons are disabled if Sync is on
+        if ca2.button("➕ Add Class (S2)", key="add_s2", disabled=st.session_state.sync_toggle): 
+            st.session_state.num_s2 += 1; st.rerun()
+        if cr2.button("➖ Remove Class (S2)", key="rem_s2", disabled=st.session_state.sync_toggle) and st.session_state.num_s2 > 1:
+            st.session_state.num_s2 -= 1; st.rerun()
+        
+        if st.session_state.sync_toggle:
+            st.session_state.num_s2 = st.session_state.num_s1
+            
         s2_data = [grade_row("S2", i, 4) for i in range(st.session_state.num_s2)]
 
     st.markdown("---")
@@ -104,3 +121,5 @@ elif st.session_state.step == 2:
         final_gpa = calculate_gpa(s1_data, s2_data)
         st.balloons()
         st.metric("Your Calculated GPA", f"{final_gpa}")
+
+# Pro-tip: If you want to change the math to a 5.0 or 6.0 scale, let me know!
