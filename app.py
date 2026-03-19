@@ -4,6 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 import re
 import time
 import base64
+import json
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 4 
@@ -14,7 +15,8 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GOOGLE SHEETS CONNECTION (WITH BASE64 FIX) ---
+# --- 2. GOOGLE SHEETS CONNECTION ---
+# Decode the base64 key from secrets if present
 if "connections" in st.secrets and "gsheets" in st.secrets.connections:
     encoded_key = st.secrets.connections.gsheets.get("private_key_base64")
     if encoded_key:
@@ -25,8 +27,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_leaderboard():
     try:
-        return conn.read(ttl=0)
-    except:
+        # Targeting Sheet1 specifically
+        return conn.read(worksheet="Sheet1", ttl=0)
+    except Exception:
         return pd.DataFrame(columns=["email", "display_name", "gpa"])
 
 def save_to_leaderboard(email, name, gpa):
@@ -36,13 +39,14 @@ def save_to_leaderboard(email, name, gpa):
         df.loc[df['email'] == email, ['display_name', 'gpa']] = [name, gpa]
     else:
         df = pd.concat([df, new_entry], ignore_index=True)
-    conn.update(data=df)
+    # Target Sheet1 for updates
+    conn.update(worksheet="Sheet1", data=df)
 
 def remove_from_leaderboard(email):
     df = get_leaderboard()
     if not df.empty and email in df['email'].values:
         df = df[df['email'] != email]
-        conn.update(data=df)
+        conn.update(worksheet="Sheet1", data=df)
         return True
     return False
 
