@@ -27,7 +27,7 @@ def calculate_gpa(s1_data, s2_data):
         if not grades: continue
         avg = sum(grades) / len(grades)
         
-        # Simple 4.0 base + weight (adjust as needed for Leander ISD 5.0/6.0)
+        # Standard Leander ISD weighted logic (approximate)
         base = (avg - 60) / 10 if avg >= 70 else 0 
         if cls in LEVEL_3: base += 1.0
         elif cls in LEVEL_2: base += 0.5
@@ -45,12 +45,15 @@ if 'num_s1' not in st.session_state: st.session_state.num_s1 = 4
 if 'num_s2' not in st.session_state: st.session_state.num_s2 = 4
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
+# Function to handle the actual syncing of selection
 def on_class_change(sem, i):
-    key = f"{sem}c{i}_sync_{st.session_state.sync_toggle}"
-    val = st.session_state.get(key, "")
-    st.session_state[f"{sem}c{i}"] = val
+    key = f"{sem}c{i}_widget"
+    val = st.session_state[key]
+    st.session_state[f"{sem}c{i}_val"] = val # Save the value
+    
+    # If syncing is ON and we change S1, force S2 to match
     if st.session_state.sync_toggle and sem == "S1":
-        st.session_state[f"S2c{i}"] = val
+        st.session_state[f"S2c{i}_val"] = val
 
 if st.session_state.step == 1:
     st.title("🏆 GPA Calculator")
@@ -65,22 +68,26 @@ if st.session_state.step == 1:
 
 elif st.session_state.step == 2:
     st.header(f"Welcome, {st.session_state.real_name}")
+    
+    # SYNC TOGGLE
     sync_ui = st.toggle("Sync Semester 2 Classes to Semester 1", value=st.session_state.sync_toggle)
     if sync_ui != st.session_state.sync_toggle:
         st.session_state.sync_toggle = sync_ui
         if sync_ui:
             st.session_state.num_s2 = st.session_state.num_s1
             for i in range(st.session_state.num_s1):
-                st.session_state[f"S2c{i}"] = st.session_state.get(f"S1c{i}", "")
+                st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
         st.rerun()
 
     def grade_row(sem, i, start_c):
         c_sel, c_1, c_2, c_3 = st.columns([2.5, 1, 1, 1])
-        curr = st.session_state.get(f"{sem}c{i}", "")
+        # Use a stored value in session state to maintain sync
+        curr_val = st.session_state.get(f"{sem}c{i}_val", "")
+        
         with c_sel:
             cls = st.selectbox(f"{sem} Class {i+1}", [""] + ALL_CLASSES, 
-                             index=ALL_CLASSES.index(curr)+1 if curr in ALL_CLASSES else 0, 
-                             key=f"{sem}c{i}_sync_{st.session_state.sync_toggle}", 
+                             index=ALL_CLASSES.index(curr_val)+1 if curr_val in ALL_CLASSES else 0, 
+                             key=f"{sem}c{i}_widget", 
                              on_change=on_class_change, args=(sem, i))
         with c_1: g1 = st.text_input(f"C{start_c}", value="0", key=f"{sem}g{start_c}_{i}")
         with c_2: g2 = st.text_input(f"C{start_c+1}", value="0", key=f"{sem}g{start_c+1}_{i}")
@@ -92,11 +99,11 @@ elif st.session_state.step == 2:
     with col_l:
         st.subheader("Semester 1")
         ca1, cr1 = st.columns(2)
-        if ca1.button("➕ Add Class (S1)", key="add_s1"): 
+        if ca1.button("➕ Add Class (S1)"): 
             st.session_state.num_s1 += 1
             if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
-        if cr1.button("➖ Remove Class (S1)", key="rem_s1") and st.session_state.num_s1 > 1:
+        if cr1.button("➖ Remove Class (S1)") and st.session_state.num_s1 > 1:
             st.session_state.num_s1 -= 1
             if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
@@ -105,12 +112,12 @@ elif st.session_state.step == 2:
     with col_r:
         st.subheader("Semester 2")
         ca2, cr2 = st.columns(2)
-        # S2 Add/Remove buttons are disabled if Sync is on
-        if ca2.button("➕ Add Class (S2)", key="add_s2", disabled=st.session_state.sync_toggle): 
+        if ca2.button("➕ Add Class (S2)", disabled=st.session_state.sync_toggle): 
             st.session_state.num_s2 += 1; st.rerun()
-        if cr2.button("➖ Remove Class (S2)", key="rem_s2", disabled=st.session_state.sync_toggle) and st.session_state.num_s2 > 1:
+        if cr2.button("➖ Remove Class (S2)", disabled=st.session_state.sync_toggle) and st.session_state.num_s2 > 1:
             st.session_state.num_s2 -= 1; st.rerun()
         
+        # Force num_s2 to match num_s1 if sync is on
         if st.session_state.sync_toggle:
             st.session_state.num_s2 = st.session_state.num_s1
             
@@ -121,5 +128,3 @@ elif st.session_state.step == 2:
         final_gpa = calculate_gpa(s1_data, s2_data)
         st.balloons()
         st.metric("Your Calculated GPA", f"{final_gpa}")
-
-# Pro-tip: If you want to change the math to a 5.0 or 6.0 scale, let me know!
