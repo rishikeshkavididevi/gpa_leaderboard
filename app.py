@@ -4,6 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 import re
 import time
 import base64
+import json
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 4 
@@ -14,21 +15,27 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GOOGLE SHEETS CONNECTION ---
+# --- 2. GOOGLE SHEETS CONNECTION (FIXED) ---
+# We create a local dictionary for credentials instead of trying to edit st.secrets
+creds_dict = {}
 if "connections" in st.secrets and "gsheets" in st.secrets.connections:
     s_sec = st.secrets.connections.gsheets
-    # Decode the Base64 key to fix newline issues
+    # Copy all existing secrets to our local dict
+    for key, value in s_sec.items():
+        creds_dict[key] = value
+    
+    # Handle Base64 decoding locally
     if "private_key_base64" in s_sec:
         decoded_key = base64.b64decode(s_sec["private_key_base64"]).decode("utf-8")
-        st.secrets.connections.gsheets["private_key"] = decoded_key
-    # Force service account mode
-    st.secrets.connections.gsheets["type"] = "service_account"
+        creds_dict["private_key"] = decoded_key
+    
+    creds_dict["type"] = "service_account"
 
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Initialize connection using the local dict
+conn = st.connection("gsheets", type=GSheetsConnection, **creds_dict)
 
 def get_leaderboard():
     try:
-        # Use worksheet="Sheet1" to match your Google Sheet tab name
         return conn.read(worksheet="Sheet1", ttl=0)
     except:
         return pd.DataFrame(columns=["email", "display_name", "gpa"])
@@ -40,7 +47,6 @@ def save_to_leaderboard(email, name, gpa):
         df.loc[df['email'] == email, ['display_name', 'gpa']] = [name, gpa]
     else:
         df = pd.concat([df, new_entry], ignore_index=True)
-    # Target Sheet1 specifically for the write operation
     conn.update(worksheet="Sheet1", data=df)
 
 def remove_from_leaderboard(email):
@@ -73,7 +79,7 @@ page = st.sidebar.radio("Navigate", nav)
 
 def on_class_change(sem, i):
     key = f"{sem}c{i}_sync_{st.session_state.sync_toggle}"
-    val = st.session_state[key]
+    val = st.session_state.get(key, "")
     st.session_state[f"{sem}c{i}"] = val
     if st.session_state.sync_toggle:
         if sem == "S2":
