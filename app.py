@@ -15,21 +15,25 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
 # --- 2. LOGIC HELPERS ---
 def trigger_sync():
-    """Immediately forces Semester 2 class count and values to match Semester 1."""
+    """Forces Semester 2 to match Semester 1 immediately."""
     if st.session_state.sync_toggle:
         st.session_state.num_s2 = st.session_state.num_s1
         for i in range(st.session_state.num_s1):
-            st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
+            s1_val = st.session_state.get(f"S1c{i}_val", "")
+            st.session_state[f"S2c{i}_val"] = s1_val
+            # Update the widget itself directly so it reflects on the first frame
+            st.session_state[f"S2c{i}_widget"] = s1_val
 
 def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget"]
     st.session_state[f"{sem}c{i}_val"] = new_val
     
-    # If Sync is ON and we change S1, instantly update S2
+    # Push S1 change to S2 if sync is ON
     if sem == "S1" and st.session_state.get("sync_toggle", False):
         st.session_state[f"S2c{i}_val"] = new_val
+        st.session_state[f"S2c{i}_widget"] = new_val
         
-    # If Sync is ON and we manually change S2 to something different, TURN OFF SYNC
+    # Break sync if S2 is changed manually to something different
     if sem == "S2" and st.session_state.get("sync_toggle", False):
         if new_val != st.session_state.get(f"S1c{i}_val", ""):
             st.session_state.sync_toggle = False
@@ -112,6 +116,7 @@ elif st.session_state.step == 2:
 
     def grade_row(sem, i, cycles):
         cols = st.columns([2.5, 1, 1, 1], gap="medium")
+        # Ensure we always pull the current "true" value for the box
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
         
         with cols[0]:
@@ -157,6 +162,7 @@ elif st.session_state.step == 2:
         st.subheader("Second Semester")
         s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
         b3, b4, _ = st.columns([0.4, 0.4, 3])
+        # Disable Sem 2 manual Add/Drop if sync is active
         if b3.button("➕ Add", key="as2", disabled=st.session_state.num_s2 >= MAX_CLASSES or st.session_state.sync_toggle):
             st.session_state.num_s2 += 1
             st.rerun()
