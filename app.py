@@ -55,9 +55,13 @@ hide_st_style = """
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
+            /* Hides the red "Deploy" crown button and status bar in the bottom right */
+            [data-testid="stStatusWidget"] {visibility: hidden;}
+            .stAppDeployButton {display:none;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
+
 
 
 if 'step' not in st.session_state: st.session_state.step = 1
