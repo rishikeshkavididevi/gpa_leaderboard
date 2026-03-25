@@ -11,7 +11,7 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GPA MATH (KEEPING UNCHANGED) ---
+# --- 2. GPA MATH ---
 def get_detailed_gpa(data):
     results = []
     for entry in data:
@@ -28,7 +28,7 @@ def get_detailed_gpa(data):
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
     return results
 
-# --- 3. SMART SYNC CALLBACK (KEEPING UNCHANGED) ---
+# --- 3. SMART SYNC CALLBACK ---
 def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
@@ -42,55 +42,32 @@ def on_class_change(sem, i):
 # --- 4. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
-# GLASSMORPHISM DARK THEME CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com');
-    
-    /* Hide Default UI */
     #MainMenu, footer, header {visibility: hidden;}
     [data-testid="stStatusWidget"], .stAppDeployButton {display:none;}
+    .stApp { background: radial-gradient(circle at top left, #1e1e2f, #111119); font-family: 'Inter', sans-serif; color: #e0e0e0; }
     
-    /* Global Styles */
-    .stApp {
-        background: radial-gradient(circle at top left, #1e1e2f, #111119);
-        font-family: 'Inter', sans-serif;
-        color: #e0e0e0;
-    }
-    
-    /* Containers & Cards */
+    /* Strict Container for Alignment */
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 20px;
-        padding: 30px !important;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        background: rgba(255, 255, 255, 0.02);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 15px;
+        padding: 2rem !important;
+        margin-bottom: 25px;
     }
-    
-    /* Inputs */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: rgba(0, 0, 0, 0.2) !important;
+        background-color: rgba(0, 0, 0, 0.3) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: white !important;
-        border-radius: 12px !important;
+        border-radius: 10px !important;
+        height: 45px !important;
     }
-    
-    /* Buttons */
-    button[kind="primary"] {
-        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important;
-        border: none !important;
-        border-radius: 12px !important;
-        font-weight: 600 !important;
-        padding: 10px 20px !important;
-    }
-    
-    /* Metric Card Polishing */
-    [data-testid="stMetricValue"] {
-        font-size: 3rem !important;
-        font-weight: 700 !important;
-        color: #a855f7 !important;
-    }
+    /* Fix Checkbox Alignment */
+    .stCheckbox { margin-top: 12px !important; }
+    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; font-weight: 600 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -98,12 +75,10 @@ if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
-# --- LOGIC SECTIONS ---
 if st.session_state.step == 1:
-    _, center, _ = st.columns([1, 2, 1])
+    _, center, _ = st.columns([1, 1.5, 1])
     with center:
         st.markdown("<h1 style='text-align: center; color: white;'>✨ Analytics Pro</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #888;'>Premium Academic Insight Engine</p>", unsafe_allow_html=True)
         with st.container():
             e_in = st.text_input("School Email", placeholder="your.name@k12.leanderisd.org")
             if st.button("Initialize Dashboard", use_container_width=True, type="primary"):
@@ -112,16 +87,12 @@ if st.session_state.step == 1:
                     st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
                     st.session_state.step = 2
                     st.rerun()
-                else: st.error("Verification failed: Please use your official school email.")
+                else: st.error("Verification failed: Use @k12.leanderisd.org")
 
 elif st.session_state.step == 2:
     st.markdown(f"#### Logged in as **{st.session_state.real_name}**")
     
-    # Header controls
-    c1, c2 = st.columns([3, 1])
-    with c2:
-        sync_ui = st.toggle("Auto-Sync Semesters", value=st.session_state.sync_toggle)
-    
+    sync_ui = st.toggle("Auto-Sync Semesters", value=st.session_state.sync_toggle)
     if sync_ui != st.session_state.sync_toggle:
         st.session_state.sync_toggle = sync_ui
         if sync_ui:
@@ -131,21 +102,30 @@ elif st.session_state.step == 2:
         st.rerun()
 
     def grade_row(sem, i, cycles):
-        cols = st.columns([3, 1, 1, 1])
+        # FIXED: Specific column weights for perfect alignment
+        cols = st.columns([3, 1, 0.5, 1, 1], gap="small")
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
+        
         with cols[0]:
-            cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
+            cls = st.selectbox(f"{sem} Class {i+1}", [""] + ALL_CLASSES, 
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
                              key=f"{sem}c{i}_widget_{st.session_state.sync_toggle}",
                              on_change=on_class_change, args=(sem, i), label_visibility="collapsed")
+        
         grades = []
-        for j, cyc in enumerate(cycles):
-            with cols[j+1]:
+        for idx, cyc in enumerate(cycles):
+            col_idx = 1 if idx == 0 else 3 if idx == 1 else 4
+            with cols[col_idx]:
                 if cyc > CURRENT_CYCLE:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append("Locked")
                 else:
-                    is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}") if cyc == CURRENT_CYCLE else False
+                    # Move checkbox to the tiny "spacer" column to prevent misalignment
+                    is_na = False
+                    if cyc == CURRENT_CYCLE:
+                        with cols[2]:
+                            is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}", label_visibility="collapsed")
+                    
                     if is_na:
                         st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                         grades.append("N/A")
@@ -154,32 +134,34 @@ elif st.session_state.step == 2:
                         grades.append(val)
         return cls, grades
 
-    t1, t2 = st.tabs(["📊 Semester I Data", "📊 Semester II Data"])
+    t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
     
     with t1:
-        st.subheader("Semester I")
+        st.subheader("Semester I (Cycles 1-3)")
         s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
-        b1, b2, _ = st.columns([1, 1, 4])
+        b1, b2, _ = st.columns([0.5, 0.5, 3])
         if b1.button("➕ Add", key="add_s1"): 
             st.session_state.num_s1 += 1
             if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
         if b2.button("➖ Drop", key="rem_s1") and st.session_state.num_s1 > 1:
             st.session_state.num_s1 -= 1
+            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
 
     with t2:
-        st.subheader("Semester II")
+        st.subheader("Semester II (Cycles 4-6)")
         s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
-        b3, b4, _ = st.columns([1, 1, 4])
+        b3, b4, _ = st.columns([0.5, 0.5, 3])
         if b3.button("➕ Add", key="add_s2"): 
             st.session_state.num_s2 += 1
+            if st.session_state.sync_toggle: st.session_state.sync_toggle = False
             st.rerun()
         if b4.button("➖ Drop", key="rem_s2") and st.session_state.num_s2 > 1:
             st.session_state.num_s2 -= 1
+            if st.session_state.sync_toggle: st.session_state.sync_toggle = False
             st.rerun()
 
-    # Results Section
     st.divider()
     if st.button("Generate Performance Report", type="primary", use_container_width=True):
         full_results = get_detailed_gpa(s1_data + s2_data)
@@ -189,4 +171,4 @@ elif st.session_state.step == 2:
             st.metric("Aggregate GPA", f"{avg_gpa:.4f}")
             st.dataframe(df, use_container_width=True)
         else:
-            st.warning("Insufficient data to generate report.")
+            st.warning("Enter grades to calculate.")
