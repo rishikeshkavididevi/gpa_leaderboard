@@ -39,8 +39,8 @@ def validate_all_grades(s1_data, s2_data):
         if sem_name == "Semester 2" and not sem2_required: continue
         for i, (cls, grades) in enumerate(sem_data):
             if not cls: return f"Row {i+1} in {sem_name} is missing a Class."
-            cycle_list = [1, 2, 3] if system == 6 else [1, 2]
-            if sem_name == "Semester 2": cycle_list = [4, 5, 6] if system == 6 else [3, 4]
+            cycle_list = [1,2,3] if system == 6 else [1,2]
+            if sem_name == "Semester 2": cycle_list = [4,5,6] if system == 6 else [3,4]
             for j, grade in enumerate(grades):
                 cycle_num = cycle_list[j]
                 if cycle_num <= current:
@@ -143,8 +143,8 @@ elif st.session_state.step == 2:
         return st.session_state.get(f"{sem}c{i}_val", ""), grades
 
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
-    s1_cycles = [1, 2, 3] if system == 6 else [1, 2]
-    s2_cycles = [4, 5, 6] if system == 6 else [3, 4]
+    s1_cycles = [1,2,3] if system == 6 else [1,2]
+    s2_cycles = [4,5,6] if system == 6 else [3,4]
 
     with t1:
         st.subheader("Semester I")
@@ -178,20 +178,30 @@ elif st.session_state.step == 2:
             s1_results = calculate_gpa_set(s1_data)
             s2_results = calculate_gpa_set(s2_data)
             
-            # Overall Metric
+            # 1. Overall Cumulative Header
             all_gpas = [r["GPA"] for r in s1_results + s2_results]
             if all_gpas:
                 avg = sum(all_gpas) / len(all_gpas)
-                st.markdown(f'<div style="text-align:center; padding:20px; border-radius:15px; background:rgba(168,85,247,0.1); border:1px solid #a855f7;"><h3 style="margin:0; color:#a855f7;">Cumulative GPA</h3><h1 style="margin:0; font-size:4rem;">{avg:.4f}</h1></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align:center; padding:20px; border-radius:15px; background:rgba(168, 85, 247, 0.1); border: 1px solid #a855f7;"><h3 style="margin:0; color:#a855f7;">Cumulative GPA</h3><h1 style="margin:0; font-size:4rem;">{avg:.4f}</h1></div>', unsafe_allow_html=True)
                 
-                # Split Tables
+                # 2. Side-by-Side Semester Breakdown
                 st.markdown("### Semester Performance Breakdown")
                 tab_col1, tab_col2 = st.columns(2)
+                
                 with tab_col1:
                     st.markdown("**Semester 1**")
-                    if s1_results: st.table(pd.DataFrame(s1_results))
+                    if s1_results:
+                        st.table(pd.DataFrame(s1_results))
+                        s1_avg = sum([r["GPA"] for r in s1_results]) / len(s1_results)
+                        st.markdown(f"<p style='color:#a855f7; font-weight:600;'>Sem 1 Average: {s1_avg:.4f}</p>", unsafe_allow_html=True)
                     else: st.info("No data for Semester 1")
+                
                 with tab_col2:
                     st.markdown("**Semester 2**")
-                    if s2_results: st.table(pd.DataFrame(s2_results))
+                    if s2_results:
+                        st.table(pd.DataFrame(s2_results))
+                        s2_avg = sum([r["GPA"] for r in s2_results]) / len(s2_results)
+                        st.markdown(f"<p style='color:#a855f7; font-weight:600;'>Sem 2 Average: {s2_avg:.4f}</p>", unsafe_allow_html=True)
                     else: st.info("No data for Semester 2")
+
+# Proactive Next Step: Should we add a bar chart below the tables to visually compare Semester 1 vs Semester 2 grades?
