@@ -2,17 +2,20 @@ import streamlit as st
 import pandas as pd
 import re
 
+# 1. MUST BE FIRST: Page Config
+st.set_page_config(page_title="GPA Calculator", layout="wide")
 
-# This hides the 'Made with Streamlit' and the top menu
+# 2. PROFESSIONAL BRANDING: Hide Streamlit elements
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
+            /* This line removes the top padding so your app starts at the very top */
+            .stApp { margin-top: -70px; }
             </style>
             """
 st.markdown(hide_st_style, unsafe_html=True)
-
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 5 
@@ -29,14 +32,11 @@ def get_detailed_gpa(data):
     for entry in data:
         cls, grades = entry[0], entry[1]
         if not cls: continue
-        
         valid_grades = []
         for g in grades:
             try: valid_grades.append(float(g))
-            except: continue # Skips "Locked" or "N/A" strings
-        
+            except: continue 
         if not valid_grades: continue
-
         avg = sum(valid_grades) / len(valid_grades)
         max_gpa = 6.0 if cls in LEVEL_3 else 5.5 if cls in LEVEL_2 else 5.0
         class_gpa = max(0, max_gpa - ((100 - avg) * 0.1)) if avg >= 70 else 0.0
@@ -54,9 +54,7 @@ def on_class_change(sem, i):
             if new_val != st.session_state.get(f"S1c{i}_val", ""):
                 st.session_state.sync_toggle = False
 
-# --- 4. APP UI ---
-st.set_page_config(page_title="GPA Calculator", layout="wide")
-
+# --- 4. APP LOGIC ---
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
@@ -74,7 +72,6 @@ if st.session_state.step == 1:
 
 elif st.session_state.step == 2:
     st.header(f"Welcome, {st.session_state.real_name}")
-    
     sync_ui = st.toggle("Sync Semester 2 to Semester 1", value=st.session_state.sync_toggle)
     if sync_ui != st.session_state.sync_toggle:
         st.session_state.sync_toggle = sync_ui
@@ -92,7 +89,6 @@ elif st.session_state.step == 2:
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
                              key=f"{sem}c{i}_widget_{st.session_state.sync_toggle}",
                              on_change=on_class_change, args=(sem, i))
-        
         grades = []
         for j, cyc in enumerate(cycles):
             with cols[j+1]:
@@ -138,33 +134,13 @@ elif st.session_state.step == 2:
 
     st.markdown("---")
     if st.button("📊 Calculate Final Breakdown", use_container_width=True):
-        errors = []
-        s1_active = [r for r in s1_data if r[0] != ""]
-        s2_active = [r for r in s2_data if r[0] != ""]
-
-        if not s1_active: errors.append("Select at least one class for Semester 1.")
-        if not s2_active: errors.append("Select at least one class for Semester 2.")
-        
-        for sem, active_rows in [("S1", s1_active), ("S2", s2_active)]:
-            for cls, grades in active_rows:
-                if any(g == "" for g in grades):
-                    errors.append(f"Missing grade in {sem} for '{cls}'.")
-
-        if errors:
-            for err in set(errors): st.error(err)
+        s1_res = get_detailed_gpa(s1_data)
+        s2_res = get_detailed_gpa(s2_data)
+        all_res = s1_res + s2_res
+        if all_res:
+            df = pd.DataFrame(all_res)
+            avg_gpa = df['GPA'].mean()
+            st.metric("Your Weighted GPA", f"{avg_gpa:.4f}")
+            st.table(df)
         else:
-            s1_res = get_detailed_gpa(s1_active)
-            s2_res = get_detailed_gpa(s2_active)
-            s1_avg = sum([x['GPA'] for x in s1_res]) / len(s1_res)
-            s2_avg = sum([x['GPA'] for x in s2_res]) / len(s2_res)
-            
-            st.balloons()
-            st.subheader("📝 Detailed GPA Breakdown")
-            t1, t2 = st.columns(2)
-            with t1:
-                st.table(pd.DataFrame(s1_res))
-                st.info(f"**S1 Average: {round(s1_avg, 4)}**")
-            with t2:
-                st.table(pd.DataFrame(s2_res))
-                st.info(f"**S2 Average: {round(s2_avg, 4)}**")
-            st.success(f"### Final Combined GPA: {round((s1_avg + s2_avg) / 2, 4)}")
+            st.error("No valid data to calculate.")
