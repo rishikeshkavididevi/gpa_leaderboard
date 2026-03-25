@@ -15,19 +15,21 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
 # --- 2. LOGIC HELPERS ---
 def on_class_change(sem, i):
+    # Store the value in a permanent state key
     new_val = st.session_state[f"{sem}c{i}_widget"]
     st.session_state[f"{sem}c{i}_val"] = new_val
+    # If syncing is on and we are in Semester 1, force Semester 2 to match
     if st.session_state.get("sync_toggle", False) and sem == "S1":
         st.session_state[f"S2c{i}_val"] = new_val
 
 def validate_all_grades(s1_data, s2_data):
     for sem_name, sem_data, sem_key in [("Semester 1", s1_data, "S1"), ("Semester 2", s2_data, "S2")]:
         for i, (cls, grades) in enumerate(sem_data):
-            # 1. Check if the Class Dropdown itself is empty
+            # 1. STRICT CLASS CHECK: Ensure a class is selected for every visible row
             if not cls or cls == "":
                 return f"Row {i+1} in {sem_name} is missing a Class selection."
             
-            # 2. Check individual grades
+            # 2. GRADE CHECK
             for j, grade in enumerate(grades):
                 cycle_num = (1, 2, 3)[j] if sem_name == "Semester 1" else (4, 5, 6)[j]
                 is_current = (cycle_num == CURRENT_CYCLE)
@@ -56,6 +58,7 @@ def get_detailed_gpa(data):
 # --- 3. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
+# CSS FOR AESTHETIC ALIGNMENT
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com');
@@ -70,7 +73,7 @@ st.markdown("""
         color: white !important; border-radius: 10px !important;
     }
     .dummy-label { height: 23px; margin-bottom: -18px; }
-    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; font-weight: 600 !important;}
+    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -97,10 +100,12 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.markdown(f"#### 🎓 Student: **{st.session_state.real_name}**")
     
-    # Sync Logic
+    # ADVANCED SYNC LOGIC
     sync_val = st.toggle("Sync Semester 2 to Semester 1", key="sync_toggle")
     if sync_val:
+        # Force Sem 2 count to match Sem 1
         st.session_state.num_s2 = st.session_state.num_s1
+        # Copy values across
         for i in range(st.session_state.num_s1):
             st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
 
@@ -108,7 +113,7 @@ elif st.session_state.step == 2:
         cols = st.columns([2.5, 1, 1, 1], gap="medium")
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
         
-        with cols:
+        with cols[0]:
             st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
             cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
@@ -149,7 +154,7 @@ elif st.session_state.step == 2:
         st.subheader("Semester II")
         s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
         b3, b4, _ = st.columns([0.4, 0.4, 3])
-        # Disable manual Add/Drop if sync is on to prevent mismatch
+        # Disable manual Add/Drop if sync is on to prevent UI conflicts
         if b3.button("➕ Add", key="as2", disabled=st.session_state.num_s2 >= MAX_CLASSES or sync_val):
             st.session_state.num_s2 += 1
             st.rerun()
