@@ -46,6 +46,20 @@ def on_class_change(sem, i):
 # --- 4. APP UI ---
 st.set_page_config(page_title="GPA Calculator", layout="wide")
 
+# --- 4. APP UI ---
+st.set_page_config(page_title="GPA Calculator", layout="wide")
+
+# HIDE STREAMLIT ELEMENTS
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
+
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
