@@ -15,26 +15,26 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
 # --- 2. LOGIC HELPERS ---
 def on_class_change(sem, i):
-    # Store the value in a permanent state key
     new_val = st.session_state[f"{sem}c{i}_widget"]
     st.session_state[f"{sem}c{i}_val"] = new_val
-    # If syncing is on and we are in Semester 1, force Semester 2 to match
     if st.session_state.get("sync_toggle", False) and sem == "S1":
         st.session_state[f"S2c{i}_val"] = new_val
+
+def handle_sync():
+    if st.session_state.sync_toggle:
+        st.session_state.num_s2 = st.session_state.num_s1
+        for i in range(st.session_state.num_s1):
+            st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
 
 def validate_all_grades(s1_data, s2_data):
     for sem_name, sem_data, sem_key in [("Semester 1", s1_data, "S1"), ("Semester 2", s2_data, "S2")]:
         for i, (cls, grades) in enumerate(sem_data):
-            # 1. STRICT CLASS CHECK: Ensure a class is selected for every visible row
             if not cls or cls == "":
                 return f"Row {i+1} in {sem_name} is missing a Class selection."
-            
-            # 2. GRADE CHECK
             for j, grade in enumerate(grades):
                 cycle_num = (1, 2, 3)[j] if sem_name == "Semester 1" else (4, 5, 6)[j]
-                is_current = (cycle_num == CURRENT_CYCLE)
                 if not str(grade).strip() or str(grade).strip() == f"C{cycle_num}":
-                    if is_current:
+                    if cycle_num == CURRENT_CYCLE:
                         if not st.session_state.get(f"{sem_key}na{cycle_num}_{i}", False):
                             return f"Missing grade or N/A for {cls} in Cycle {cycle_num}"
                     else:
@@ -58,21 +58,31 @@ def get_detailed_gpa(data):
 # --- 3. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
-# CSS FOR AESTHETIC ALIGNMENT
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com');
     #MainMenu, footer, header {visibility: hidden;}
     .stApp { background: radial-gradient(circle at top left, #1e1e2f, #111119); font-family: 'Inter', sans-serif; color: #e0e0e0; }
+    
+    /* Card Styling */
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
         background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(15px);
         border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 1.5rem !important;
     }
+    
+    /* Strict Alignment Fixes */
+    .stCheckbox { 
+        margin-bottom: -20px !important; 
+        margin-top: 0px !important; 
+        transform: scale(0.8);
+        transform-origin: left;
+    }
+    .dummy-label { height: 23px; margin-bottom: -20px; }
+    
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
         background-color: rgba(0, 0, 0, 0.4) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: white !important; border-radius: 10px !important;
     }
-    .dummy-label { height: 23px; margin-bottom: -18px; }
     button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -100,14 +110,7 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.markdown(f"#### 🎓 Student: **{st.session_state.real_name}**")
     
-    # ADVANCED SYNC LOGIC
-    sync_val = st.toggle("Sync Semester 2 to Semester 1", key="sync_toggle")
-    if sync_val:
-        # Force Sem 2 count to match Sem 1
-        st.session_state.num_s2 = st.session_state.num_s1
-        # Copy values across
-        for i in range(st.session_state.num_s1):
-            st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
+    st.toggle("Sync Semester 2 to Semester 1", key="sync_toggle", on_change=handle_sync)
 
     def grade_row(sem, i, cycles):
         cols = st.columns([2.5, 1, 1, 1], gap="medium")
@@ -115,14 +118,14 @@ elif st.session_state.step == 2:
         
         with cols[0]:
             st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
-            cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
+            st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
                              key=f"{sem}c{i}_widget", on_change=on_class_change, args=(sem, i),
                              label_visibility="collapsed")
         
         grades = []
-        for j, cyc in enumerate(cycles):
-            with cols[j+1]:
+        for idx, cyc in enumerate(cycles):
+            with cols[idx+1]:
                 if cyc == CURRENT_CYCLE:
                     is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}")
                 else:
@@ -135,30 +138,32 @@ elif st.session_state.step == 2:
                 else:
                     val = st.text_input(f"C{cyc}", value="", key=f"{sem}g{cyc}_{i}", label_visibility="collapsed", placeholder=f"C{cyc}")
                     grades.append(val)
-        return cls, grades
+        return st.session_state.get(f"{sem}c{i}_val", ""), grades
 
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
     
     with t1:
-        st.subheader("Semester I")
+        st.subheader("First Semester")
         s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
         b1, b2, _ = st.columns([0.4, 0.4, 3])
         if b1.button("➕ Add", key="as1", disabled=st.session_state.num_s1 >= MAX_CLASSES):
             st.session_state.num_s1 += 1
+            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
         if b2.button("➖ Drop", key="rs1", disabled=st.session_state.num_s1 <= MIN_CLASSES):
             st.session_state.num_s1 -= 1
+            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
 
     with t2:
-        st.subheader("Semester II")
+        st.subheader("Second Semester")
         s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
         b3, b4, _ = st.columns([0.4, 0.4, 3])
-        # Disable manual Add/Drop if sync is on to prevent UI conflicts
-        if b3.button("➕ Add", key="as2", disabled=st.session_state.num_s2 >= MAX_CLASSES or sync_val):
+        sync_off = not st.session_state.sync_toggle
+        if b3.button("➕ Add", key="as2", disabled=st.session_state.num_s2 >= MAX_CLASSES or not sync_off):
             st.session_state.num_s2 += 1
             st.rerun()
-        if b4.button("➖ Drop", key="rs2", disabled=st.session_state.num_s2 <= MIN_CLASSES or sync_val):
+        if b4.button("➖ Drop", key="rs2", disabled=st.session_state.num_s2 <= MIN_CLASSES or not sync_off):
             st.session_state.num_s2 -= 1
             st.rerun()
 
