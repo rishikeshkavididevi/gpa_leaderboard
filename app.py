@@ -2,6 +2,19 @@ import streamlit as st
 import pandas as pd
 import re
 
+import streamlit as st
+
+# This hides the 'Made with Streamlit' and the top menu
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_html=True)
+
+
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 5 
 
