@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import re
 
-import streamlit as st
 
 # This hides the 'Made with Streamlit' and the top menu
 hide_st_style = """
