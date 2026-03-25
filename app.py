@@ -37,26 +37,30 @@ def validate_all_grades(s1_data, s2_data):
         for i, (cls, grades) in enumerate(sem_data):
             if not cls: return f"Row {i+1} in {sem_name} is missing a Class."
             for j, grade in enumerate(grades):
-                # Map internal index to actual Cycle Number
                 cycle_list = [1, 2, 3] if st.session_state.system_cycles == 6 else [1, 2]
                 if sem_name == "Semester 2":
                     cycle_list = [4, 5, 6] if st.session_state.system_cycles == 6 else [3, 4]
                 
                 cycle_num = cycle_list[j]
-                if not str(grade).strip() or str(grade).strip() == f"C{cycle_num}":
-                    if cycle_num == current:
-                        if not st.session_state.get(f"{sem_key}na{cycle_num}_{i}", False):
-                            return f"Missing grade/NA for {cls} in Cycle {cycle_num}"
-                    else:
-                        return f"Enter grade for {cls} in Cycle {cycle_num}"
+                # We only validate cycles that are NOT locked
+                if cycle_num <= current:
+                    if not str(grade).strip() or str(grade).strip() in ["C1", "C2", "C3", "C4", "C5", "C6"]:
+                        if cycle_num == current:
+                            if not st.session_state.get(f"{sem_key}na{cycle_num}_{i}", False):
+                                return f"Missing grade/NA for {cls} in Cycle {cycle_num}"
+                        else:
+                            return f"Enter grade for {cls} in Cycle {cycle_num}"
     return None
 
 def get_detailed_gpa(data):
     results = []
+    current = st.session_state.current_cycle
     for cls, grades in data:
         v_grades = []
         for g in grades:
-            try: v_grades.append(float(g))
+            try:
+                val = float(g)
+                v_grades.append(val)
             except: continue
         if not v_grades: continue
         avg = sum(v_grades) / len(v_grades)
@@ -107,20 +111,17 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.markdown(f"#### 🎓 Student: **{st.session_state.real_name}**")
     
-    # --- SYSTEM SETTINGS ---
     with st.container():
         st.subheader("System Configuration")
         c1, c2, c3 = st.columns(3)
         with c1:
-            system = st.selectbox("Number of Cycles", [6, 4], key="system_cycles", help="6-cycle (3/sem) or 4-cycle (2/sem)")
+            system = st.selectbox("Number of Cycles", [6, 4], key="system_cycles")
         with c2:
-            max_c = system
-            st.selectbox("Current Cycle", range(1, max_c + 1), index=max_c-2, key="current_cycle")
+            st.selectbox("Current Cycle", range(1, system + 1), index=system-1, key="current_cycle")
         with c3:
             st.toggle("Sync Semester 2 to Semester 1", key="sync_toggle", on_change=trigger_sync)
 
     def grade_row(sem, i, cycles):
-        # Column width adjusts based on number of cycles
         col_weights = [2.5] + [1] * len(cycles)
         cols = st.columns(col_weights, gap="medium")
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
@@ -135,13 +136,19 @@ elif st.session_state.step == 2:
         grades = []
         for idx, cyc in enumerate(cycles):
             with cols[idx+1]:
+                # LOCK LOGIC: If cycle is in the future, disable it
+                is_locked = (cyc > st.session_state.current_cycle)
+                
                 if cyc == st.session_state.current_cycle:
                     is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}")
                 else:
                     st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
                     is_na = False
                 
-                if is_na:
+                if is_locked:
+                    st.text_input(f"C{cyc}", value="Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
+                    grades.append("Locked")
+                elif is_na:
                     st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append("N/A")
                 else:
@@ -151,7 +158,6 @@ elif st.session_state.step == 2:
 
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
     
-    # Determine which cycles to show based on system choice
     s1_cycles = [1, 2, 3] if system == 6 else [1, 2]
     s2_cycles = [4, 5, 6] if system == 6 else [3, 4]
 
@@ -190,3 +196,5 @@ elif st.session_state.step == 2:
                 avg = df["GPA"].mean()
                 st.markdown(f'<div style="text-align:center; padding:20px; border-radius:15px; background:rgba(168,85,247,0.1); border:1px solid #a855f7;"><h3 style="margin:0; color:#a855f7;">Calculated GPA</h3><h1 style="margin:0; font-size:4rem;">{avg:.4f}</h1></div>', unsafe_allow_html=True)
                 st.dataframe(df, use_container_width=True, hide_index=True)
+
+# Next step: Should we add a feature that highlights "At-Risk" grades (below 70) in red in the final report?
