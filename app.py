@@ -49,24 +49,31 @@ st.markdown("""
     [data-testid="stStatusWidget"], .stAppDeployButton {display:none;}
     .stApp { background: radial-gradient(circle at top left, #1e1e2f, #111119); font-family: 'Inter', sans-serif; color: #e0e0e0; }
     
-    /* Strict Container for Alignment */
+    /* Card Styling */
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
         background: rgba(255, 255, 255, 0.02);
         backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 15px;
-        padding: 2rem !important;
-        margin-bottom: 25px;
+        padding: 1.5rem !important;
+        margin-bottom: 20px;
     }
+
+    /* Input & Select Box Polishing */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
         background-color: rgba(0, 0, 0, 0.3) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: white !important;
-        border-radius: 10px !important;
-        height: 45px !important;
+        border-radius: 8px !important;
     }
-    /* Fix Checkbox Alignment */
-    .stCheckbox { margin-top: 12px !important; }
+
+    /* Strict alignment for stacked checkboxes */
+    .stCheckbox {
+        margin-bottom: -15px !important;
+        transform: scale(0.85);
+        transform-origin: left;
+    }
+
     button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; font-weight: 600 !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -76,7 +83,7 @@ if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.n
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
 if st.session_state.step == 1:
-    _, center, _ = st.columns([1, 1.5, 1])
+    _, center, _ = st.columns([1, 1.2, 1])
     with center:
         st.markdown("<h1 style='text-align: center; color: white;'>✨ Analytics Pro</h1>", unsafe_allow_html=True)
         with st.container():
@@ -87,10 +94,10 @@ if st.session_state.step == 1:
                     st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
                     st.session_state.step = 2
                     st.rerun()
-                else: st.error("Verification failed: Use @k12.leanderisd.org")
+                else: st.error("Please use your @k12.leanderisd.org email")
 
 elif st.session_state.step == 2:
-    st.markdown(f"#### Logged in as **{st.session_state.real_name}**")
+    st.markdown(f"#### Welcome back, **{st.session_state.real_name}**")
     
     sync_ui = st.toggle("Auto-Sync Semesters", value=st.session_state.sync_toggle)
     if sync_ui != st.session_state.sync_toggle:
@@ -102,29 +109,25 @@ elif st.session_state.step == 2:
         st.rerun()
 
     def grade_row(sem, i, cycles):
-        # FIXED: Specific column weights for perfect alignment
-        cols = st.columns([3, 1, 0.5, 1, 1], gap="small")
+        # 4 Columns: 1 large for class, 3 small for cycles
+        cols = st.columns([2.5, 1, 1, 1], gap="medium")
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
         
         with cols[0]:
-            cls = st.selectbox(f"{sem} Class {i+1}", [""] + ALL_CLASSES, 
+            cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
                              key=f"{sem}c{i}_widget_{st.session_state.sync_toggle}",
                              on_change=on_class_change, args=(sem, i), label_visibility="collapsed")
         
         grades = []
-        for idx, cyc in enumerate(cycles):
-            col_idx = 1 if idx == 0 else 3 if idx == 1 else 4
-            with cols[col_idx]:
+        for j, cyc in enumerate(cycles):
+            with cols[j+1]:
                 if cyc > CURRENT_CYCLE:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append("Locked")
                 else:
-                    # Move checkbox to the tiny "spacer" column to prevent misalignment
-                    is_na = False
-                    if cyc == CURRENT_CYCLE:
-                        with cols[2]:
-                            is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}", label_visibility="collapsed")
+                    # Checkbox placed directly on top of the input in the SAME column
+                    is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}") if cyc == CURRENT_CYCLE else False
                     
                     if is_na:
                         st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
@@ -137,9 +140,9 @@ elif st.session_state.step == 2:
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
     
     with t1:
-        st.subheader("Semester I (Cycles 1-3)")
+        st.subheader("First Semester (Cycles 1-3)")
         s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
-        b1, b2, _ = st.columns([0.5, 0.5, 3])
+        b1, b2, _ = st.columns([0.4, 0.4, 3])
         if b1.button("➕ Add", key="add_s1"): 
             st.session_state.num_s1 += 1
             if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
@@ -150,9 +153,9 @@ elif st.session_state.step == 2:
             st.rerun()
 
     with t2:
-        st.subheader("Semester II (Cycles 4-6)")
+        st.subheader("Second Semester (Cycles 4-6)")
         s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
-        b3, b4, _ = st.columns([0.5, 0.5, 3])
+        b3, b4, _ = st.columns([0.4, 0.4, 3])
         if b3.button("➕ Add", key="add_s2"): 
             st.session_state.num_s2 += 1
             if st.session_state.sync_toggle: st.session_state.sync_toggle = False
@@ -168,7 +171,7 @@ elif st.session_state.step == 2:
         if full_results:
             df = pd.DataFrame(full_results)
             avg_gpa = df["GPA"].mean()
-            st.metric("Aggregate GPA", f"{avg_gpa:.4f}")
-            st.dataframe(df, use_container_width=True)
+            st.metric("Estimated Cumulative GPA", f"{avg_gpa:.4f}")
+            st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.warning("Enter grades to calculate.")
+            st.warning("Please enter at least one class and grade.")
