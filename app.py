@@ -5,16 +5,17 @@ import re
 # 1. MUST BE FIRST: Page Config
 st.set_page_config(page_title="GPA Calculator", layout="wide")
 
-# 2. PROFESSIONAL BRANDING: Hide Streamlit elements
+# 2. DEFINE THE BRANDING STYLE
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
-            /* This line removes the top padding so your app starts at the very top */
             .stApp { margin-top: -70px; }
             </style>
             """
+
+# 3. APPLY THE BRANDING STYLE
 st.markdown(hide_st_style, unsafe_html=True)
 
 # --- 0. ADMIN CONTROL ---
@@ -139,8 +140,5 @@ elif st.session_state.step == 2:
         all_res = s1_res + s2_res
         if all_res:
             df = pd.DataFrame(all_res)
-            avg_gpa = df['GPA'].mean()
-            st.metric("Your Weighted GPA", f"{avg_gpa:.4f}")
+            st.metric("Final Projected Weighted GPA", f"{df['GPA'].mean():.4f}")
             st.table(df)
-        else:
-            st.error("No valid data to calculate.")
