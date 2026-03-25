@@ -15,7 +15,7 @@ ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
 # --- 2. LOGIC HELPERS ---
 def trigger_sync():
-    """Forces Semester 2 to match Semester 1 physically."""
+    """Immediately forces Semester 2 class count and values to match Semester 1."""
     if st.session_state.sync_toggle:
         st.session_state.num_s2 = st.session_state.num_s1
         for i in range(st.session_state.num_s1):
@@ -25,11 +25,11 @@ def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget"]
     st.session_state[f"{sem}c{i}_val"] = new_val
     
-    # Sync S1 -> S2
+    # If Sync is ON and we change S1, instantly update S2
     if sem == "S1" and st.session_state.get("sync_toggle", False):
         st.session_state[f"S2c{i}_val"] = new_val
         
-    # Auto-disable sync if user manually changes S2 to something else
+    # If Sync is ON and we manually change S2 to something different, TURN OFF SYNC
     if sem == "S2" and st.session_state.get("sync_toggle", False):
         if new_val != st.session_state.get(f"S1c{i}_val", ""):
             st.session_state.sync_toggle = False
@@ -71,16 +71,12 @@ st.markdown("""
     @import url('https://fonts.googleapis.com');
     #MainMenu, footer, header {visibility: hidden;}
     .stApp { background: radial-gradient(circle at top left, #1e1e2f, #111119); font-family: 'Inter', sans-serif; color: #e0e0e0; }
-    
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
         background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(15px);
         border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 1.5rem !important;
     }
-    
-    /* Alignment Correction */
-    .stCheckbox { margin-bottom: -20px !important; margin-top: 0px !important; transform: scale(0.85); transform-origin: left; }
-    .dummy-label { height: 23px; margin-bottom: -20px; }
-    
+    .stCheckbox { margin-bottom: -22px !important; margin-top: 0px !important; transform: scale(0.8); transform-origin: left; }
+    .dummy-label { height: 23px; margin-bottom: -22px; }
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
         background-color: rgba(0, 0, 0, 0.4) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: white !important; border-radius: 10px !important;
@@ -145,8 +141,8 @@ elif st.session_state.step == 2:
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
     
     with t1:
-        st.subheader("Semester I")
-        s1_data = [grade_row("S1", i,) for i in range(st.session_state.num_s1)]
+        st.subheader("First Semester")
+        s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
         b1, b2, _ = st.columns([0.4, 0.4, 3])
         if b1.button("➕ Add", key="as1", disabled=st.session_state.num_s1 >= MAX_CLASSES):
             st.session_state.num_s1 += 1
@@ -159,7 +155,7 @@ elif st.session_state.step == 2:
 
     with t2:
         st.subheader("Second Semester")
-        s2_data = [grade_row("S2", i,) for i in range(st.session_state.num_s2)]
+        s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
         b3, b4, _ = st.columns([0.4, 0.4, 3])
         if b3.button("➕ Add", key="as2", disabled=st.session_state.num_s2 >= MAX_CLASSES or st.session_state.sync_toggle):
             st.session_state.num_s2 += 1
