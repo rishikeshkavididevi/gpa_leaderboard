@@ -34,37 +34,24 @@ def on_class_change(sem, i):
 def validate_all_grades(s1_data, s2_data):
     current = st.session_state.current_cycle
     system = st.session_state.system_cycles
-    
-    # Logic: If current cycle is in Sem 2, then Sem 2 is REQUIRED
-    # 6-cycle: Sem 2 starts at cycle 4. 4-cycle: Sem 2 starts at cycle 3.
     sem2_required = (current >= 4) if system == 6 else (current >= 3)
-
     for sem_name, sem_data, sem_key in [("Semester 1", s1_data, "S1"), ("Semester 2", s2_data, "S2")]:
-        # Skip Semester 2 check if it's not even started yet
-        if sem_name == "Semester 2" and not sem2_required:
-            continue
-
+        if sem_name == "Semester 2" and not sem2_required: continue
         for i, (cls, grades) in enumerate(sem_data):
             if not cls: return f"Row {i+1} in {sem_name} is missing a Class."
-            
-            # Map indices to actual cycle numbers
-            cycle_list = [1,2,3] if system == 6 else [1,2]
-            if sem_name == "Semester 2":
-                cycle_list = [4,5,6] if system == 6 else [3,4]
-            
+            cycle_list = [1, 2, 3] if system == 6 else [1, 2]
+            if sem_name == "Semester 2": cycle_list = [4, 5, 6] if system == 6 else [3, 4]
             for j, grade in enumerate(grades):
                 cycle_num = cycle_list[j]
-                # Only validate if the cycle is NOT in the future (NOT Locked)
                 if cycle_num <= current:
                     if not str(grade).strip() or str(grade).strip() in ["C1", "C2", "C3", "C4", "C5", "C6"]:
                         if cycle_num == current:
                             if not st.session_state.get(f"{sem_key}na{cycle_num}_{i}", False):
                                 return f"Missing grade/NA for {cls} in Cycle {cycle_num}"
-                        else:
-                            return f"Enter grade for {cls} in Cycle {cycle_num}"
+                        else: return f"Enter grade for {cls} in Cycle {cycle_num}"
     return None
 
-def get_detailed_gpa(data):
+def calculate_gpa_set(data):
     results = []
     for cls, grades in data:
         v_grades = []
@@ -131,27 +118,19 @@ elif st.session_state.step == 2:
             st.toggle("Sync Semester 2 to Semester 1", key="sync_toggle", on_change=trigger_sync)
 
     def grade_row(sem, i, cycles):
-        col_weights = [2.5] + [1] * len(cycles)
+        col_weights = [2.5] + [1.0] * len(cycles)
         cols = st.columns(col_weights, gap="medium")
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
-        
         with cols[0]:
             st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
-            st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
-                             index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
-                             key=f"{sem}c{i}_widget", on_change=on_class_change, args=(sem, i),
-                             label_visibility="collapsed")
-        
+            st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
+                         key=f"{sem}c{i}_widget", on_change=on_class_change, args=(sem, i), label_visibility="collapsed")
         grades = []
         for idx, cyc in enumerate(cycles):
             with cols[idx+1]:
                 is_locked = (cyc > st.session_state.current_cycle)
-                if cyc == st.session_state.current_cycle:
-                    is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}")
-                else:
-                    st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
-                    is_na = False
-                
+                is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}") if cyc == st.session_state.current_cycle else False
+                if not is_na and cyc != st.session_state.current_cycle: st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
                 if is_locked:
                     st.text_input(f"C{cyc}", value="Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append("Locked")
@@ -164,9 +143,8 @@ elif st.session_state.step == 2:
         return st.session_state.get(f"{sem}c{i}_val", ""), grades
 
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
-    
-    s1_cycles = [1,2,3] if system == 6 else [1,2]
-    s2_cycles = [4,5,6] if system == 6 else [3,4]
+    s1_cycles = [1, 2, 3] if system == 6 else [1, 2]
+    s2_cycles = [4, 5, 6] if system == 6 else [3, 4]
 
     with t1:
         st.subheader("Semester I")
@@ -197,11 +175,23 @@ elif st.session_state.step == 2:
         error = validate_all_grades(s1_data, s2_data)
         if error: st.error(f"⚠️ {error}")
         else:
-            final = get_detailed_gpa(s1_data + s2_data)
-            if final:
-                df = pd.DataFrame(final)
-                avg = df["GPA"].mean()
-                st.markdown(f'<div style="text-align:center; padding:20px; border-radius:15px; background:rgba(168,85,247,0.1); border:1px solid #a855f7;"><h3 style="margin:0; color:#a855f7;">Calculated GPA</h3><h1 style="margin:0; font-size:4rem;">{avg:.4f}</h1></div>', unsafe_allow_html=True)
-                st.dataframe(df, use_container_width=True, hide_index=True)
-
-# Next step: Should we add a button to "Reset All Data" in case the student wants to clear the entire form?
+            s1_results = calculate_gpa_set(s1_data)
+            s2_results = calculate_gpa_set(s2_data)
+            
+            # Overall Metric
+            all_gpas = [r["GPA"] for r in s1_results + s2_results]
+            if all_gpas:
+                avg = sum(all_gpas) / len(all_gpas)
+                st.markdown(f'<div style="text-align:center; padding:20px; border-radius:15px; background:rgba(168,85,247,0.1); border:1px solid #a855f7;"><h3 style="margin:0; color:#a855f7;">Cumulative GPA</h3><h1 style="margin:0; font-size:4rem;">{avg:.4f}</h1></div>', unsafe_allow_html=True)
+                
+                # Split Tables
+                st.markdown("### Semester Performance Breakdown")
+                tab_col1, tab_col2 = st.columns(2)
+                with tab_col1:
+                    st.markdown("**Semester 1**")
+                    if s1_results: st.table(pd.DataFrame(s1_results))
+                    else: st.info("No data for Semester 1")
+                with tab_col2:
+                    st.markdown("**Semester 2**")
+                    if s2_results: st.table(pd.DataFrame(s2_results))
+                    else: st.info("No data for Semester 2")
