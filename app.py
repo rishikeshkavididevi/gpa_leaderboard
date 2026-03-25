@@ -3,7 +3,6 @@ import pandas as pd
 import re
 
 # --- 0. ADMIN CONTROL ---
-CURRENT_CYCLE = 4 
 CURRENT_CYCLE = 5 
 
 
