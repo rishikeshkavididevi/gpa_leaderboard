@@ -11,16 +11,15 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GPA MATH ---
+# --- 2. GPA MATH & VALIDATION ---
 def get_detailed_gpa(data):
     results = []
-    for entry in data:
-        cls, grades = entry[0], entry[1]
+    for cls, grades in data:
         if not cls: continue
         valid_grades = []
         for g in grades:
             try: valid_grades.append(float(g))
-            except: continue 
+            except: continue
         if not valid_grades: continue
         avg = sum(valid_grades) / len(valid_grades)
         max_gpa = 6.0 if cls in LEVEL_3 else 5.5 if cls in LEVEL_2 else 5.0
@@ -28,68 +27,54 @@ def get_detailed_gpa(data):
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
     return results
 
-# --- 3. SMART SYNC CALLBACK ---
-def on_class_change(sem, i):
-    new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
-    st.session_state[f"{sem}c{i}_val"] = new_val
-    if st.session_state.sync_toggle:
-        if sem == "S1":
-            st.session_state[f"S2c{i}_val"] = new_val
-        elif sem == "S2":
-            if new_val != st.session_state.get(f"S1c{i}_val", ""):
-                st.session_state.sync_toggle = False
+def validate_all_grades(s1_data, s2_data):
+    """Returns an error message if grades are missing, otherwise returns None."""
+    for sem_name, sem_data, sem_key in [("Semester 1", s1_data, "S1"), ("Semester 2", s2_data, "S2")]:
+        for i, (cls, grades) in enumerate(sem_data):
+            if not cls: continue 
+            for j, grade in enumerate(grades):
+                cycle_num = (1, 2, 3)[j] if sem_name == "Semester 1" else (4, 5, 6)[j]
+                
+                # Check if it's the CURRENT cycle (Cycle 5)
+                is_current = (cycle_num == CURRENT_CYCLE)
+                
+                # If grade is empty OR looks like the placeholder "C1", "C2" etc
+                if not str(grade).strip() or str(grade).strip() == f"C{cycle_num}":
+                    if is_current:
+                        # Check if N/A checkbox is checked in session state
+                        if not st.session_state.get(f"{sem_key}na{cycle_num}_{i}", False):
+                            return f"Missing grade or N/A for {cls} in Cycle {cycle_num}"
+                    else:
+                        # Mandatory for all other cycles
+                        return f"Please enter a grade for {cls} in Cycle {cycle_num}"
+    return None
 
-# --- 4. APP UI ---
+# --- 3. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
+# AESTHETIC DARK CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com');
     #MainMenu, footer, header {visibility: hidden;}
-    [data-testid="stStatusWidget"], .stAppDeployButton {display:none;}
     .stApp { background: radial-gradient(circle at top left, #1e1e2f, #111119); font-family: 'Inter', sans-serif; color: #e0e0e0; }
-    
-    /* Clean Cards */
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
-        background: rgba(255, 255, 255, 0.02);
-        backdrop-filter: blur(15px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        padding: 2rem !important;
+        background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 2rem !important;
     }
-
-    /* Input & Select Box Styling */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: rgba(0, 0, 0, 0.4) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        color: white !important;
-        border-radius: 10px !important;
+        background-color: rgba(0, 0, 0, 0.4) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: white !important; border-radius: 10px !important;
     }
-
-    /* Force Checkbox to be small and tight */
-    .stCheckbox {
-        margin-bottom: -18px !important;
-        margin-top: 0px !important;
-    }
-    .stCheckbox label p {
-        font-size: 0.75rem !important;
-        color: #888 !important;
-    }
-    
-    /* Placeholder for Alignment */
-    .dummy-label {
-        height: 23px;
-        margin-bottom: -18px;
-    }
-
-    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; }
+    .dummy-label { height: 23px; margin-bottom: -18px; }
+    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; font-weight: 600 !important;}
     </style>
     """, unsafe_allow_html=True)
 
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
-if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
+# --- LOGIN SCREEN ---
 if st.session_state.step == 1:
     _, center, _ = st.columns([1, 1.2, 1])
     with center:
@@ -104,44 +89,26 @@ if st.session_state.step == 1:
                     st.rerun()
                 else: st.error("Verification failed: Use @k12.leanderisd.org")
 
+# --- MAIN DASHBOARD ---
 elif st.session_state.step == 2:
-    st.markdown(f"#### Welcome back, **{st.session_state.real_name}**")
+    st.markdown(f"#### 🎓 Student: **{st.session_state.real_name}**")
     
-    sync_ui = st.toggle("Auto-Sync Semesters", value=st.session_state.sync_toggle)
-    if sync_ui != st.session_state.sync_toggle:
-        st.session_state.sync_toggle = sync_ui
-        if sync_ui:
-            st.session_state.num_s2 = st.session_state.num_s1
-            for i in range(st.session_state.num_s1):
-                st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
-        st.rerun()
-
     def grade_row(sem, i, cycles):
-        cols = st.columns([3, 1, 1, 1], gap="medium")
-        stored_val = st.session_state.get(f"{sem}c{i}_val", "")
-        
+        cols = st.columns([2.5, 1, 1, 1], gap="medium")
         with cols[0]:
-            # Add a vertical offset to class select so it aligns with the inputs below checkboxes
             st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
-            cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
-                             index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
-                             key=f"{sem}c{i}_widget_{st.session_state.sync_toggle}",
-                             on_change=on_class_change, args=(sem, i), label_visibility="collapsed")
+            cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, key=f"{sem}c{i}", label_visibility="collapsed")
         
         grades = []
         for j, cyc in enumerate(cycles):
             with cols[j+1]:
-                # THE FIX: Checkboxes or Placeholders in every column to force height symmetry
                 if cyc == CURRENT_CYCLE:
                     is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}")
                 else:
                     st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
                     is_na = False
                 
-                if cyc > CURRENT_CYCLE:
-                    st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
-                    grades.append("Locked")
-                elif is_na:
+                if is_na:
                     st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append("N/A")
                 else:
@@ -150,37 +117,37 @@ elif st.session_state.step == 2:
         return cls, grades
 
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
-    
     with t1:
-        st.subheader("First Semester (Cycles 1-3)")
+        st.subheader("Semester I (Cycles 1-3)")
         s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
         b1, b2, _ = st.columns([0.4, 0.4, 3])
-        if b1.button("➕ Add", key="add_s1"): 
-            st.session_state.num_s1 += 1
-            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
-            st.rerun()
-        if b2.button("➖ Drop", key="rem_s1") and st.session_state.num_s1 > 1:
-            st.session_state.num_s1 -= 1
-            st.rerun()
+        if b1.button("➕ Add", key="as1"): st.session_state.num_s1 += 1; st.rerun()
+        if b2.button("➖ Drop", key="rs1") and st.session_state.num_s1 > 1: st.session_state.num_s1 -= 1; st.rerun()
 
     with t2:
-        st.subheader("Second Semester (Cycles 4-6)")
+        st.subheader("Semester II (Cycles 4-6)")
         s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
         b3, b4, _ = st.columns([0.4, 0.4, 3])
-        if b3.button("➕ Add", key="add_s2"): 
-            st.session_state.num_s2 += 1
-            st.rerun()
-        if b4.button("➖ Drop", key="rem_s2") and st.session_state.num_s2 > 1:
-            st.session_state.num_s2 -= 1
-            st.rerun()
+        if b3.button("➕ Add", key="as2"): st.session_state.num_s2 += 1; st.rerun()
+        if b4.button("➖ Drop", key="rs2") and st.session_state.num_s2 > 1: st.session_state.num_s2 -= 1; st.rerun()
 
     st.divider()
     if st.button("Generate Performance Report", type="primary", use_container_width=True):
-        full_results = get_detailed_gpa(s1_data + s2_data)
-        if full_results:
-            df = pd.DataFrame(full_results)
-            avg_gpa = df["GPA"].mean()
-            st.metric("Estimated Cumulative GPA", f"{avg_gpa:.4f}")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+        # VALIDATION CHECK
+        error = validate_all_grades(s1_data, s2_data)
+        if error:
+            st.error(f"⚠️ {error}")
         else:
-            st.warning("Enter grades to calculate.")
+            results = get_detailed_gpa(s1_data + s2_data)
+            if results:
+                df = pd.DataFrame(results)
+                avg = df["GPA"].mean()
+                st.markdown(f"""
+                    <div style="text-align: center; padding: 20px; border-radius: 15px; background: rgba(168, 85, 247, 0.1); border: 1px solid #a855f7;">
+                        <h3 style="margin: 0; color: #a855f7;">Calculated GPA</h3>
+                        <h1 style="margin: 0; font-size: 4rem;">{avg:.4f}</h1>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Please enter at least one class.")
