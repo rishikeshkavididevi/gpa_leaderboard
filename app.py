@@ -49,32 +49,40 @@ st.markdown("""
     [data-testid="stStatusWidget"], .stAppDeployButton {display:none;}
     .stApp { background: radial-gradient(circle at top left, #1e1e2f, #111119); font-family: 'Inter', sans-serif; color: #e0e0e0; }
     
-    /* Card Styling */
+    /* Clean Cards */
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
         background: rgba(255, 255, 255, 0.02);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 15px;
-        padding: 1.5rem !important;
-        margin-bottom: 20px;
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 2rem !important;
     }
 
-    /* Input & Select Box Polishing */
+    /* Input & Select Box Styling */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: rgba(0, 0, 0, 0.3) !important;
+        background-color: rgba(0, 0, 0, 0.4) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: white !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
     }
 
-    /* Strict alignment for stacked checkboxes */
+    /* Force Checkbox to be small and tight */
     .stCheckbox {
-        margin-bottom: -15px !important;
-        transform: scale(0.85);
-        transform-origin: left;
+        margin-bottom: -18px !important;
+        margin-top: 0px !important;
+    }
+    .stCheckbox label p {
+        font-size: 0.75rem !important;
+        color: #888 !important;
+    }
+    
+    /* Placeholder for Alignment */
+    .dummy-label {
+        height: 23px;
+        margin-bottom: -18px;
     }
 
-    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; font-weight: 600 !important; }
+    button[kind="primary"] { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important; border: none !important; border-radius: 10px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -87,14 +95,14 @@ if st.session_state.step == 1:
     with center:
         st.markdown("<h1 style='text-align: center; color: white;'>✨ Analytics Pro</h1>", unsafe_allow_html=True)
         with st.container():
-            e_in = st.text_input("School Email", placeholder="your.name@k12.leanderisd.org")
+            e_in = st.text_input("School Email", placeholder="first.last@k12.leanderisd.org")
             if st.button("Initialize Dashboard", use_container_width=True, type="primary"):
                 if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", e_in.lower().strip()):
                     match = re.match(r"^([a-z]+)\.([a-z]+)", e_in.lower().strip())
                     st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
                     st.session_state.step = 2
                     st.rerun()
-                else: st.error("Please use your @k12.leanderisd.org email")
+                else: st.error("Verification failed: Use @k12.leanderisd.org")
 
 elif st.session_state.step == 2:
     st.markdown(f"#### Welcome back, **{st.session_state.real_name}**")
@@ -109,11 +117,12 @@ elif st.session_state.step == 2:
         st.rerun()
 
     def grade_row(sem, i, cycles):
-        # 4 Columns: 1 large for class, 3 small for cycles
-        cols = st.columns([2.5, 1, 1, 1], gap="medium")
+        cols = st.columns([3, 1, 1, 1], gap="medium")
         stored_val = st.session_state.get(f"{sem}c{i}_val", "")
         
         with cols[0]:
+            # Add a vertical offset to class select so it aligns with the inputs below checkboxes
+            st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
             cls = st.selectbox(f"Class {i+1}", [""] + ALL_CLASSES, 
                              index=ALL_CLASSES.index(stored_val)+1 if stored_val in ALL_CLASSES else 0,
                              key=f"{sem}c{i}_widget_{st.session_state.sync_toggle}",
@@ -122,19 +131,22 @@ elif st.session_state.step == 2:
         grades = []
         for j, cyc in enumerate(cycles):
             with cols[j+1]:
+                # THE FIX: Checkboxes or Placeholders in every column to force height symmetry
+                if cyc == CURRENT_CYCLE:
+                    is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}")
+                else:
+                    st.markdown('<div class="dummy-label"></div>', unsafe_allow_html=True)
+                    is_na = False
+                
                 if cyc > CURRENT_CYCLE:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append("Locked")
+                elif is_na:
+                    st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
+                    grades.append("N/A")
                 else:
-                    # Checkbox placed directly on top of the input in the SAME column
-                    is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}") if cyc == CURRENT_CYCLE else False
-                    
-                    if is_na:
-                        st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
-                        grades.append("N/A")
-                    else:
-                        val = st.text_input(f"C{cyc}", value="", key=f"{sem}g{cyc}_{i}", label_visibility="collapsed", placeholder=f"C{cyc}")
-                        grades.append(val)
+                    val = st.text_input(f"C{cyc}", value="", key=f"{sem}g{cyc}_{i}", label_visibility="collapsed", placeholder=f"C{cyc}")
+                    grades.append(val)
         return cls, grades
 
     t1, t2 = st.tabs(["📊 Semester I", "📊 Semester II"])
@@ -149,7 +161,6 @@ elif st.session_state.step == 2:
             st.rerun()
         if b2.button("➖ Drop", key="rem_s1") and st.session_state.num_s1 > 1:
             st.session_state.num_s1 -= 1
-            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
             st.rerun()
 
     with t2:
@@ -158,11 +169,9 @@ elif st.session_state.step == 2:
         b3, b4, _ = st.columns([0.4, 0.4, 3])
         if b3.button("➕ Add", key="add_s2"): 
             st.session_state.num_s2 += 1
-            if st.session_state.sync_toggle: st.session_state.sync_toggle = False
             st.rerun()
         if b4.button("➖ Drop", key="rem_s2") and st.session_state.num_s2 > 1:
             st.session_state.num_s2 -= 1
-            if st.session_state.sync_toggle: st.session_state.sync_toggle = False
             st.rerun()
 
     st.divider()
@@ -174,4 +183,4 @@ elif st.session_state.step == 2:
             st.metric("Estimated Cumulative GPA", f"{avg_gpa:.4f}")
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.warning("Please enter at least one class and grade.")
+            st.warning("Enter grades to calculate.")
