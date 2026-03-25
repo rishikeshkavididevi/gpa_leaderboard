@@ -46,23 +46,17 @@ def on_class_change(sem, i):
 # --- 4. APP UI ---
 st.set_page_config(page_title="GPA Calculator", layout="wide")
 
-# --- 4. APP UI ---
-st.set_page_config(page_title="GPA Calculator", layout="wide")
-
-# HIDE STREAMLIT ELEMENTS
+# CSS TO HIDE TOP RIGHT MENU AND BOTTOM RIGHT BRANDING/DEPLOY BUTTONS
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
-            /* Hides the red "Deploy" crown button and status bar in the bottom right */
-            [data-testid="stStatusWidget"] {visibility: hidden;}
             .stAppDeployButton {display:none;}
+            [data-testid="stStatusWidget"] {display:none;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
-
-
 
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
@@ -148,30 +142,3 @@ elif st.session_state.step == 2:
         errors = []
         s1_active = [r for r in s1_data if r[0] != ""]
         s2_active = [r for r in s2_data if r[0] != ""]
-
-        if not s1_active: errors.append("Select at least one class for Semester 1.")
-        if not s2_active: errors.append("Select at least one class for Semester 2.")
-
-        for sem, active_rows in [("S1", s1_active), ("S2", s2_active)]:
-            for cls, grades in active_rows:
-                if any(g == "" for g in grades):
-                    errors.append(f"Missing grade in {sem} for '{cls}'.")
-
-        if errors:
-            for err in set(errors): st.error(err)
-        else:
-            s1_res = get_detailed_gpa(s1_active)
-            s2_res = get_detailed_gpa(s2_active)
-            s1_avg = sum([x['GPA'] for x in s1_res]) / len(s1_res)
-            s2_avg = sum([x['GPA'] for x in s2_res]) / len(s2_res)
-
-            st.balloons()
-            st.subheader("📝 Detailed GPA Breakdown")
-            t1, t2 = st.columns(2)
-            with t1:
-                st.table(pd.DataFrame(s1_res))
-                st.info(f"**S1 Average: {round(s1_avg, 4)}**")
-            with t2:
-                st.table(pd.DataFrame(s2_res))
-                st.info(f"**S2 Average: {round(s2_avg, 4)}**")
-            st.success(f"### Final Combined GPA: {round((s1_avg + s2_avg) / 2, 4)}")
