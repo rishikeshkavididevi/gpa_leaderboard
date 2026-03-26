@@ -1,9 +1,14 @@
 import streamlit as st
 import pandas as pd
 import re
+from datetime import datetime
+from st_supabase_connection import SupabaseConnection
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 5 
+
+# --- INITIALIZE SUPABASE ---
+conn = st.connection("supabase", type=SupabaseConnection)
 
 # --- 1. DATA SETUP ---
 LEVEL_3 = ["English III AP", "English III IB", "English IV AP", "English IV IB", "Calculus AB AP", "Calculus BC AP", "Math: Analysis & Appr IB SL", "Math: Analysis & Appr IB HL", "Math: Application & Int IB SL", "Math: Application & Int IB HL", "Precalculus AP", "Statistics AP", "Biology AP", "Biology IB SL", "Biology IB HL", "Chemistry AP", "Chemistry IB SL", "Chemistry IB HL", "Environmental Science AP", "Physics 1 AP", "Physics 2 AP", "Physics C: Mechanics AP", "Physics IB SL", "Physics IB HL", "European History AP", "History of the Americas IB", "Human Geography AP", "Macroeconomics AP", "Microeconomics AP", "Psychology AP", "Psychology IB", "U.S. Government AP", "U.S. History AP", "World History AP", "Chinese IV AP", "French IV AP", "French IB SL", "French IB HL", "Latin IV AP", "Latin IB SL", "Latin IB HL", "Spanish IV AP", "Spanish V AP", "Spanish IB SL", "Spanish IB HL"]
@@ -11,7 +16,7 @@ LEVEL_2 = ["AP Seminar", "English I Advanced", "English I QUEST", "English II Ad
 LEVEL_1 = ["English I", "English II", "English III", "English IV", "Algebra I", "Algebra II", "Algebraic Reasoning", "College Prep Math", "Geometry", "Math Models", "Pre-Calculus", "Statistics", "Astronomy", "Biology", "Chemistry", "Environmental Systems", "Earth & Space Science", "Earth Systems Science", "Integrated Physics and Chemistry", "Physics", "Specialized Topics in Science", "An American Experience", "African American Studies", "Economics", "Mexican American Studies", "New Testament Bible & Amer Civ", "Old Testament Bible & Amer Civ", "Personal Financial Literacy", "Psychology", "Sociology", "U.S. Government", "U.S. History", "World Geography", "World History", "American Sign Language I", "American Sign Language II", "American Sign Language III", "American Sign Language IV", "Chinese I", "Chinese II", "Chinese III", "Chinese IV", "French I", "French II", "Latin I", "Latin II", "Spanish I", "Spanish II", "Spanish III"]
 ALL_CLASSES = sorted(list(set(LEVEL_3 + LEVEL_2 + LEVEL_1)))
 
-# --- 2. GPA MATH (KEEPING UNCHANGED) ---
+# --- 2. GPA MATH ---
 def get_detailed_gpa(data):
     results = []
     for entry in data:
@@ -28,7 +33,7 @@ def get_detailed_gpa(data):
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
     return results
 
-# --- 3. SMART SYNC CALLBACK (KEEPING UNCHANGED) ---
+# --- 3. SMART SYNC CALLBACK ---
 def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
@@ -42,23 +47,16 @@ def on_class_change(sem, i):
 # --- 4. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
-# GLASSMORPHISM DARK THEME CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com');
-    
-    /* Hide Default UI */
     #MainMenu, footer, header {visibility: hidden;}
     [data-testid="stStatusWidget"], .stAppDeployButton {display:none;}
-    
-    /* Global Styles */
     .stApp {
         background: radial-gradient(circle at top left, #1e1e2f, #111119);
         font-family: 'Inter', sans-serif;
         color: #e0e0e0;
     }
-    
-    /* Containers & Cards */
     div[data-testid="stVerticalBlock"] > div:has(div.stSubheader) {
         background: rgba(255, 255, 255, 0.03);
         backdrop-filter: blur(10px);
@@ -67,16 +65,12 @@ st.markdown("""
         padding: 30px !important;
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     }
-    
-    /* Inputs */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
         background-color: rgba(0, 0, 0, 0.2) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         color: white !important;
         border-radius: 12px !important;
     }
-    
-    /* Buttons */
     button[kind="primary"] {
         background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important;
         border: none !important;
@@ -84,8 +78,6 @@ st.markdown("""
         font-weight: 600 !important;
         padding: 10px 20px !important;
     }
-    
-    /* Metric Card Polishing */
     [data-testid="stMetricValue"] {
         font-size: 3rem !important;
         font-weight: 700 !important;
@@ -95,7 +87,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 if 'step' not in st.session_state: st.session_state.step = 1
-if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 4, 4
+if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 7, 7
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
 
 # --- LOGIC SECTIONS ---
@@ -107,9 +99,21 @@ if st.session_state.step == 1:
         with st.container():
             e_in = st.text_input("School Email", placeholder="your.name@k12.leanderisd.org")
             if st.button("Initialize Dashboard", use_container_width=True, type="primary"):
-                if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", e_in.lower().strip()):
-                    match = re.match(r"^([a-z]+)\.([a-z]+)", e_in.lower().strip())
+                email_clean = e_in.lower().strip()
+                if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", email_clean):
+                    match = re.match(r"^([a-z]+)\.([a-z]+)", email_clean)
                     st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
+                    
+                    # LOG LOGIN TO SUPABASE
+                    try:
+                        conn.table("user_logins").insert({
+                            "name": st.session_state.real_name,
+                            "email": email_clean,
+                            "login_time": datetime.now().isoformat()
+                        }).execute()
+                    except:
+                        pass 
+
                     st.session_state.step = 2
                     st.rerun()
                 else: st.error("Verification failed: Please use your official school email.")
@@ -117,7 +121,6 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
     st.markdown(f"#### Logged in as **{st.session_state.real_name}**")
     
-    # Header controls
     c1, c2 = st.columns([3, 1])
     with c2:
         sync_ui = st.toggle("Auto-Sync Semesters", value=st.session_state.sync_toggle)
@@ -143,50 +146,30 @@ elif st.session_state.step == 2:
             with cols[j+1]:
                 if cyc > CURRENT_CYCLE:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
-                    grades.append("Locked")
+                    grades.append(None)
                 else:
-                    is_na = st.checkbox("N/A", key=f"{sem}na{cyc}_{i}") if cyc == CURRENT_CYCLE else False
-                    if is_na:
-                        st.text_input(f"C{cyc}", "N/A", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
-                        grades.append("N/A")
-                    else:
-                        val = st.text_input(f"C{cyc}", value="", key=f"{sem}g{cyc}_{i}", label_visibility="collapsed", placeholder=f"C{cyc}")
-                        grades.append(val)
+                    g = st.text_input(f"C{cyc}", placeholder=f"C{cyc}", key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
+                    grades.append(g)
         return cls, grades
 
-    t1, t2 = st.tabs(["📊 Semester I Data", "📊 Semester II Data"])
+    s1_data, s2_data = [], []
+    col_s1, col_s2 = st.columns(2)
     
-    with t1:
-        st.subheader("Semester I")
-        s1_data = [grade_row("S1", i, [1, 2, 3]) for i in range(st.session_state.num_s1)]
-        b1, b2, _ = st.columns([1, 1, 4])
-        if b1.button("➕ Add", key="add_s1"): 
-            st.session_state.num_s1 += 1
-            if st.session_state.sync_toggle: st.session_state.num_s2 = st.session_state.num_s1
-            st.rerun()
-        if b2.button("➖ Drop", key="rem_s1") and st.session_state.num_s1 > 1:
-            st.session_state.num_s1 -= 1
-            st.rerun()
+    with col_s1:
+        st.subheader("Semester 1")
+        for i in range(st.session_state.num_s1):
+            s1_data.append(grade_row("S1", i, [1, 2, 3]))
 
-    with t2:
-        st.subheader("Semester II")
-        s2_data = [grade_row("S2", i, [4, 5, 6]) for i in range(st.session_state.num_s2)]
-        b3, b4, _ = st.columns([1, 1, 4])
-        if b3.button("➕ Add", key="add_s2"): 
-            st.session_state.num_s2 += 1
-            st.rerun()
-        if b4.button("➖ Drop", key="rem_s2") and st.session_state.num_s2 > 1:
-            st.session_state.num_s2 -= 1
-            st.rerun()
+    with col_s2:
+        st.subheader("Semester 2")
+        for i in range(st.session_state.num_s2):
+            s2_data.append(grade_row("S2", i, [4, 5, 6]))
 
-    # Results Section
-    st.divider()
-    if st.button("Generate Performance Report", type="primary", use_container_width=True):
-        full_results = get_detailed_gpa(s1_data + s2_data)
-        if full_results:
-            df = pd.DataFrame(full_results)
-            avg_gpa = df["GPA"].mean()
-            st.metric("Aggregate GPA", f"{avg_gpa:.4f}")
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.warning("Insufficient data to generate report.")
+    if st.button("Calculate Final Analytics", type="primary"):
+        res1 = get_detailed_gpa(s1_data)
+        res2 = get_detailed_gpa(s2_data)
+        all_gpas = [r['GPA'] for r in res1 + res2]
+        if all_gpas:
+            final_gpa = sum(all_gpas) / len(all_gpas)
+            st.metric("Estimated Weighted GPA", f"{final_gpa:.4f}")
+            st.dataframe(pd.DataFrame(res1 + res2), hide_index=True, use_container_width=True)
