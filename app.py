@@ -33,7 +33,39 @@ def get_detailed_gpa(data):
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
     return results
 
-# --- 3. SMART SYNC CALLBACK ---
+# --- 3. PERSISTENT STATE HELPERS ---
+SAVE_KEY_PREFIXES = ["S1c", "S2c", "S1g", "S2g", "num_s", "sync_toggle"]
+
+def save_user_data():
+    """Save all grade/class session state keys to Supabase."""
+    email = st.session_state.get("email", "")
+    if not email:
+        return
+    keys_to_save = {}
+    for key, val in st.session_state.items():
+        if any(key.startswith(p) for p in SAVE_KEY_PREFIXES):
+            keys_to_save[key] = val
+    try:
+        conn.table("user_data").upsert({
+            "email": email,
+            "data": keys_to_save,
+            "updated_at": datetime.now().isoformat()
+        }).execute()
+    except:
+        pass
+
+def load_user_data(email):
+    """Load saved session state from Supabase for this email."""
+    try:
+        result = conn.table("user_data").select("data").eq("email", email).execute()
+        if result.data:
+            saved = result.data[0]["data"]
+            for k, v in saved.items():
+                st.session_state[k] = v
+    except:
+        pass
+
+# --- 4. SMART SYNC CALLBACK ---
 def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
@@ -43,8 +75,9 @@ def on_class_change(sem, i):
         elif sem == "S2":
             if new_val != st.session_state.get(f"S1c{i}_val", ""):
                 st.session_state.sync_toggle = False
+    save_user_data()
 
-# --- 4. APP UI ---
+# --- 5. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
 st.markdown("""
@@ -103,7 +136,8 @@ if st.session_state.step == 1:
                 if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", email_clean):
                     match = re.match(r"^([a-z]+)\.([a-z]+)", email_clean)
                     st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
-                    
+                    st.session_state.email = email_clean
+
                     # LOG LOGIN TO SUPABASE
                     try:
                         conn.table("user_logins").insert({
@@ -112,13 +146,19 @@ if st.session_state.step == 1:
                             "login_time": datetime.now().isoformat()
                         }).execute()
                     except:
-                        pass 
+                        pass
+
+                    # LOAD SAVED DATA FOR THIS USER
+                    load_user_data(email_clean)
 
                     st.session_state.step = 2
                     st.rerun()
                 else: st.error("Verification failed: Please use your official school email.")
 
 elif st.session_state.step == 2:
+    # AUTO-SAVE on every rerun (catches grade text input changes)
+    save_user_data()
+
     st.markdown(f"#### Logged in as **{st.session_state.real_name}**")
     
     c1, c2 = st.columns([3, 1])
@@ -131,6 +171,7 @@ elif st.session_state.step == 2:
             st.session_state.num_s2 = st.session_state.num_s1
             for i in range(st.session_state.num_s1):
                 st.session_state[f"S2c{i}_val"] = st.session_state.get(f"S1c{i}_val", "")
+        save_user_data()
         st.rerun()
 
     def grade_row(sem, i, cycles):
@@ -148,7 +189,10 @@ elif st.session_state.step == 2:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append(None)
                 else:
-                    g = st.text_input(f"C{cyc}", placeholder=f"C{cyc}", key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
+                    # Restore saved grade value if it exists
+                    saved_grade = st.session_state.get(f"{sem}g{cyc}_{i}", "")
+                    g = st.text_input(f"C{cyc}", placeholder=f"C{cyc}", key=f"{sem}g{cyc}_{i}",
+                                      value=saved_grade, label_visibility="collapsed")
                     grades.append(g)
         return cls, grades
 
@@ -173,3 +217,14 @@ elif st.session_state.step == 2:
             final_gpa = sum(all_gpas) / len(all_gpas)
             st.metric("Estimated Weighted GPA", f"{final_gpa:.4f}")
             st.dataframe(pd.DataFrame(res1 + res2), hide_index=True, use_container_width=True)
+
+            # SAVE GPA RESULT TO SUPABASE
+            try:
+                conn.table("gpa_results").insert({
+                    "name": st.session_state.real_name,
+                    "email": st.session_state.email,
+                    "gpa": round(final_gpa, 4),
+                    "calculated_at": datetime.now().isoformat()
+                }).execute()
+            except:
+                pass
