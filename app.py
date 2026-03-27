@@ -43,7 +43,9 @@ def save_user_data():
     keys_to_save = {}
     for key, val in st.session_state.items():
         if any(key.startswith(p) for p in SAVE_KEY_PREFIXES):
-            keys_to_save[key] = val
+            # Only save serializable, non-widget-internal values
+            if isinstance(val, (str, int, float, bool, list, dict, type(None))):
+                keys_to_save[key] = val
     try:
         conn.table("user_data").upsert({
             "email": email,
@@ -63,7 +65,12 @@ def load_user_data(email):
     except:
         pass
 
-# --- 4. SMART SYNC CALLBACK ---
+# --- 4. CALLBACKS ---
+def on_grade_change(key):
+    val = st.session_state.get(key, "")
+    st.session_state[key] = val
+    save_user_data()
+
 def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
@@ -203,9 +210,11 @@ elif st.session_state.step == 2:
                     st.text_input(f"C{cyc}", "Locked", disabled=True, key=f"{sem}g{cyc}_{i}", label_visibility="collapsed")
                     grades.append(None)
                 else:
-                    saved_grade = st.session_state.get(f"{sem}g{cyc}_{i}", "")
-                    g = st.text_input(f"C{cyc}", placeholder=f"C{cyc}", key=f"{sem}g{cyc}_{i}",
-                                      value=saved_grade, label_visibility="collapsed")
+                    grade_key = f"{sem}g{cyc}_{i}"
+                    saved_grade = st.session_state.get(grade_key, "")
+                    g = st.text_input(f"C{cyc}", placeholder=f"C{cyc}", key=grade_key,
+                                      value=saved_grade, label_visibility="collapsed",
+                                      on_change=on_grade_change, args=(grade_key,))
                     grades.append(g)
         return cls, grades
 
