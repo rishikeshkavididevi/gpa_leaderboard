@@ -175,7 +175,7 @@ if st.session_state.step == 1:
                 e_in = st.text_input("School Email", placeholder="your.name@k12.leanderisd.org")
                 if st.button("Initialize Dashboard", use_container_width=True, type="primary"):
                     email_clean = e_in.lower().strip()
-                    if re.match(r"^([a-z]+)\.([a-z]+)(\d*)@k12\.leanderisd\.org$", email_clean):
+                    if re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", email_clean):
                         try:
                             supabase.auth.sign_in_with_otp({
                                 "email": email_clean,
@@ -187,7 +187,7 @@ if st.session_state.step == 1:
                         except Exception as ex:
                             st.error(f"Could not send login email: {ex}")
                     else:
-                        st.error("Verification failed: Please use your official school email.")
+                        st.error("Please enter a valid email address.")
             else:
                 pending = st.session_state.get("pending_email", "your school email")
                 st.info(f"📬 A 6-digit code was sent to **{pending}**. Check your inbox.")
@@ -207,7 +207,10 @@ if st.session_state.step == 1:
                             st.session_state.user_id = user.id
                             st.session_state.email = pending
                             match = re.match(r"^([a-z]+)\.([a-z]+)", pending)
-                            st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}" if match else pending
+                            if match:
+                                st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
+                            else:
+                                st.session_state.real_name = pending.split("@")[0].capitalize()
                             st.session_state.magic_sent = False
                             try:
                                 supabase.table("user_logins").insert({
