@@ -2,15 +2,13 @@ import streamlit as st
 import pandas as pd
 import re
 from datetime import datetime
-from supabase import create_client, Client
+from st_supabase_connection import SupabaseConnection
 
 # --- 0. ADMIN CONTROL ---
 CURRENT_CYCLE = 5
 
-# --- INITIALIZE SUPABASE (direct client, not st.connection) ---
-SUPABASE_URL = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# --- INITIALIZE SUPABASE ---
+conn = st.connection("supabase", type=SupabaseConnection)
 
 # --- 1. DATA SETUP ---
 LEVEL_3 = ["English III AP", "English III IB", "English IV AP", "English IV IB", "Calculus AB AP", "Calculus BC AP", "Math: Analysis & Appr IB SL", "Math: Analysis & Appr IB HL", "Math: Application & Int IB SL", "Math: Application & Int IB HL", "Precalculus AP", "Statistics AP", "Biology AP", "Biology IB SL", "Biology IB HL", "Chemistry AP", "Chemistry IB SL", "Chemistry IB HL", "Environmental Science AP", "Physics 1 AP", "Physics 2 AP", "Physics C: Mechanics AP", "Physics IB SL", "Physics IB HL", "European History AP", "History of the Americas IB", "Human Geography AP", "Macroeconomics AP", "Microeconomics AP", "Psychology AP", "Psychology IB", "U.S. Government AP", "U.S. History AP", "World History AP", "Chinese IV AP", "French IV AP", "French IB SL", "French IB HL", "Latin IV AP", "Latin IB SL", "Latin IB HL", "Spanish IV AP", "Spanish V AP", "Spanish IB SL", "Spanish IB HL"]
@@ -35,56 +33,29 @@ def get_detailed_gpa(data):
         results.append({"Class": cls, "GPA": round(class_gpa, 4)})
     return results
 
-# --- 3. AUTH HELPERS ---
-def get_user_from_session():
-    """Restore Supabase session from stored tokens."""
-    access_token = st.session_state.get("access_token")
-    refresh_token = st.session_state.get("refresh_token")
-    if not access_token or not refresh_token:
-        return None
-    try:
-        session = supabase.auth.set_session(access_token, refresh_token)
-        return session.user if session else None
-    except:
-        return None
-
-def sign_out():
-    try:
-        supabase.auth.sign_out()
-    except:
-        pass
-    for key in ["access_token", "refresh_token", "user_id", "real_name", "email", "step"]:
-        st.session_state.pop(key, None)
-    st.session_state.step = 1
-
-# --- 4. PERSISTENT STATE HELPERS ---
+# --- 3. PERSISTENT STATE HELPERS ---
 SAVE_KEY_PREFIXES = ["S1c", "S2c", "S1g", "S2g", "num_s", "sync_toggle"]
 
 def save_user_data():
-    """Upsert grade/class data to Supabase for the authenticated user."""
-    user_id = st.session_state.get("user_id")
-    if not user_id:
+    email = st.session_state.get("email", "")
+    if not email:
         return
     keys_to_save = {}
     for key, val in st.session_state.items():
         if any(key.startswith(p) for p in SAVE_KEY_PREFIXES):
             keys_to_save[key] = val
     try:
-        supabase.table("user_data").upsert({
-            "user_id": user_id,
+        conn.table("user_data").upsert({
+            "email": email,
             "data": keys_to_save,
             "updated_at": datetime.now().isoformat()
         }).execute()
     except:
         pass
 
-def load_user_data():
-    """Load saved grade/class data from Supabase for the authenticated user."""
-    user_id = st.session_state.get("user_id")
-    if not user_id:
-        return
+def load_user_data(email):
     try:
-        result = supabase.table("user_data").select("data").eq("user_id", user_id).execute()
+        result = conn.table("user_data").select("data").eq("email", email).execute()
         if result.data:
             saved = result.data[0]["data"]
             for k, v in saved.items():
@@ -92,7 +63,7 @@ def load_user_data():
     except:
         pass
 
-# --- 5. SMART SYNC CALLBACK ---
+# --- 4. SMART SYNC CALLBACK ---
 def on_class_change(sem, i):
     new_val = st.session_state[f"{sem}c{i}_widget_{st.session_state.sync_toggle}"]
     st.session_state[f"{sem}c{i}_val"] = new_val
@@ -104,7 +75,7 @@ def on_class_change(sem, i):
                 st.session_state.sync_toggle = False
     save_user_data()
 
-# --- 6. APP UI ---
+# --- 5. APP UI ---
 st.set_page_config(page_title="Analytics Pro", page_icon="✨", layout="wide")
 
 st.markdown("""
@@ -150,19 +121,6 @@ st.markdown("""
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'num_s1' not in st.session_state: st.session_state.num_s1, st.session_state.num_s2 = 7, 7
 if 'sync_toggle' not in st.session_state: st.session_state.sync_toggle = False
-if 'magic_sent' not in st.session_state: st.session_state.magic_sent = False
-
-# --- RESTORE SESSION IF TOKENS EXIST ---
-if st.session_state.step == 1 and not st.session_state.magic_sent:
-    user = get_user_from_session()
-    if user:
-        email = user.email
-        match = re.match(r"^([a-z]+)\.([a-z]+)", email.lower())
-        st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}" if match else email
-        st.session_state.email = email
-        st.session_state.user_id = user.id
-        st.session_state.step = 2
-        load_user_data()
 
 # --- STEP 1: LOGIN ---
 if st.session_state.step == 1:
@@ -171,65 +129,36 @@ if st.session_state.step == 1:
         st.markdown("<h1 style='text-align: center; color: white;'>✨ Analytics Pro</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #888;'>Premium Academic Insight Engine</p>", unsafe_allow_html=True)
         with st.container():
-            if not st.session_state.magic_sent:
-                e_in = st.text_input("School Email", placeholder="your.name@k12.leanderisd.org")
-                if st.button("Initialize Dashboard", use_container_width=True, type="primary"):
-                    email_clean = e_in.lower().strip()
-                    if re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", email_clean):
-                        try:
-                            supabase.auth.sign_in_with_otp({
-                                "email": email_clean,
-                                "options": {"should_create_user": True}
-                            })
-                            st.session_state.pending_email = email_clean
-                            st.session_state.magic_sent = True
-                            st.rerun()
-                        except Exception as ex:
-                            st.error(f"Could not send login email: {ex}")
+            e_in = st.text_input("Email", placeholder="you@example.com")
+            if st.button("Initialize Dashboard", use_container_width=True, type="primary"):
+                email_clean = e_in.lower().strip()
+                if re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", email_clean):
+                    # Extract display name from email
+                    match = re.match(r"^([a-z]+)\.([a-z]+)", email_clean)
+                    if match:
+                        st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
                     else:
-                        st.error("Please enter a valid email address.")
-            else:
-                pending = st.session_state.get("pending_email", "your school email")
-                st.info(f"📬 A 6-digit code was sent to **{pending}**. Check your inbox.")
-                otp_code = st.text_input("Enter your code", placeholder="123456", max_chars=6)
-                if st.button("Verify Code", use_container_width=True, type="primary"):
+                        st.session_state.real_name = email_clean.split("@")[0].capitalize()
+
+                    st.session_state.email = email_clean
+
+                    # Log login
                     try:
-                        response = supabase.auth.verify_otp({
-                            "email": pending,
-                            "token": otp_code.strip(),
-                            "type": "email"
-                        })
-                        user = response.user
-                        session = response.session
-                        if user and session:
-                            st.session_state.access_token = session.access_token
-                            st.session_state.refresh_token = session.refresh_token
-                            st.session_state.user_id = user.id
-                            st.session_state.email = pending
-                            match = re.match(r"^([a-z]+)\.([a-z]+)", pending)
-                            if match:
-                                st.session_state.real_name = f"{match.group(1).capitalize()} {match.group(2).capitalize()}"
-                            else:
-                                st.session_state.real_name = pending.split("@")[0].capitalize()
-                            st.session_state.magic_sent = False
-                            try:
-                                supabase.table("user_logins").insert({
-                                    "name": st.session_state.real_name,
-                                    "email": pending,
-                                    "login_time": datetime.now().isoformat()
-                                }).execute()
-                            except:
-                                pass
-                            load_user_data()
-                            st.session_state.step = 2
-                            st.rerun()
-                        else:
-                            st.error("Invalid or expired code. Please try again.")
-                    except Exception as ex:
-                        st.error(f"Verification failed: {ex}")
-                if st.button("← Use a different email"):
-                    st.session_state.magic_sent = False
+                        conn.table("user_logins").insert({
+                            "name": st.session_state.real_name,
+                            "email": email_clean,
+                            "login_time": datetime.now().isoformat()
+                        }).execute()
+                    except:
+                        pass
+
+                    # Load any saved data for this email
+                    load_user_data(email_clean)
+
+                    st.session_state.step = 2
                     st.rerun()
+                else:
+                    st.error("Please enter a valid email address.")
 
 # --- STEP 2: DASHBOARD ---
 elif st.session_state.step == 2:
@@ -241,7 +170,9 @@ elif st.session_state.step == 2:
         st.markdown(f"#### Logged in as **{st.session_state.real_name}**")
     with col_out:
         if st.button("Sign Out", use_container_width=True):
-            sign_out()
+            for key in ["email", "real_name", "step"]:
+                st.session_state.pop(key, None)
+            st.session_state.step = 1
             st.rerun()
 
     c1, c2 = st.columns([3, 1])
@@ -300,8 +231,7 @@ elif st.session_state.step == 2:
             st.metric("Estimated Weighted GPA", f"{final_gpa:.4f}")
             st.dataframe(pd.DataFrame(res1 + res2), hide_index=True, use_container_width=True)
             try:
-                supabase.table("gpa_results").insert({
-                    "user_id": st.session_state.user_id,
+                conn.table("gpa_results").insert({
                     "name": st.session_state.real_name,
                     "email": st.session_state.email,
                     "gpa": round(final_gpa, 4),
