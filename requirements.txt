@@ -1,1 +1,3 @@
-st-supabase-connection
+supabase
+streamlit
+pandas
